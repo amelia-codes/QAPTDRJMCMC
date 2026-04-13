@@ -6,7 +6,7 @@ import numpy as np
 # change this to actual A later
 
 # beginning dimension
-m_0 = 2 # of variables
+m_0 = 8 # of variables
 v_0 = np.random.rand(m_0)
 v_0_norm = np.linalg.norm(v_0)
 n_0 = int(np.ceil(np.log2(m_0)))
@@ -27,4 +27,8 @@ circ.measure(qreg_a,creg)
 with circ.if_test((creg,0)):
     circ.swap(qreg_prev,qreg_next)
 # Draw the circuit
-circ.draw('mpl')
+circ.decompose(reps=5).draw('mpl')
+
+# understand TD vs. RJ
+# draw the decomposed circuit to assess the complexity of state_preparation for large inputs (done)
+# figure out the information that we are going to simulate (parameters)
