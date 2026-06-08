@@ -16,22 +16,6 @@ print(n_0)
 A = np.eye(2**(n_0*3))
 
 
-# not sure how to implement this into actual circuit
-# quantum jacobian?
-
-#subset of parameters used in dimension matching requirement (this would have to be given earlier as it changes)
-params = [] 
-# Define the estimator
-estimator = StatevectorEstimator(seed=42)
-# Define the gradient
-gradient = ParamShiftEstimatorGradient(estimator)
-
-# Evaluate the gradient of the circuits using parameter shift gradients
-pse_grad_result = gradient.run(qc, H, params).result().gradients
-
-
-
-
 # acceptance ratio
 alpha = 
 
