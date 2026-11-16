@@ -13,6 +13,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from qiskit import QuantumCircuit, QuantumRegister, StatePreparation
 ROOT = Path(__file__).parent
 OUT = ROOT / "figures" / "quantum_walk"
 DATA = ROOT / "data" / "quantum_walk"
