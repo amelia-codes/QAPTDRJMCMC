@@ -1,0 +1,10 @@
+8 runs x 100000 iterations in 414s
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/tdrjmcmc_accuracy.pdf
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/tdrjmcmc_trajectories.pdf
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/tdrjmcmc_burnin.pdf
+
+sampler             err vs inj  sampling err (LOO)               IQR  median-pair conv  R_c1 final  R_c2 final  ms/iter
+Fisher TD-RJMCMC (classical)      0.2521              0.0224   0.0216-0.0227                 nan       0.114       0.213     5.41
+AP, Tian et al. (classical)      0.2538              0.0310   0.0291-0.0361                 nan       0.181       0.307     4.69
+QCLT-AP (quantum kick, simulated)      0.2548              0.0324   0.0289-0.0384                 nan       0.177       0.286     4.79
+QCLT + AMR, ours (quantum kick, simulated; 6-bit registers)      0.2542              0.0315   0.0281-0.0368                 nan       0.147       0.277     6.58

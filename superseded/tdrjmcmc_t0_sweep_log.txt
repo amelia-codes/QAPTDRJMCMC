@@ -1,0 +1,20 @@
+[chirp_snr40_tf] 130 runs x 12000 iterations in 567s
+[chirp_snr40_tf] iterations to match >= 0.95: Fisher median 462 (10/10 runs reached it)
+   ap_nb    t0=10: 969 (10/10)  t0=30: 948 (10/10)  t0=100: 824 (10/10)  t0=300: 642 (10/10)  t0=1000: 462 (10/10)  t0=3000: 462 (10/10)
+   qclt_nb  t0=10: 888 (10/10)  t0=30: 1082 (10/10)  t0=100: 1104 (10/10)  t0=300: 655 (10/10)  t0=1000: 438 (10/10)  t0=3000: 438 (10/10)
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/tdrjmcmc_t0_sweep.pdf
+[hard_snr40_prior] 130 runs x 12000 iterations in 655s
+[chirp_snr40_tf] iterations to match >= 0.95: Fisher median 462 (10/10 runs reached it)
+   ap_nb    t0=10: 969 (10/10)  t0=30: 948 (10/10)  t0=100: 824 (10/10)  t0=300: 642 (10/10)  t0=1000: 462 (10/10)  t0=3000: 462 (10/10)
+   qclt_nb  t0=10: 888 (10/10)  t0=30: 1082 (10/10)  t0=100: 1104 (10/10)  t0=300: 655 (10/10)  t0=1000: 438 (10/10)  t0=3000: 438 (10/10)
+[hard_snr40_prior] iterations to match >= 0.95: Fisher median 5664 (10/10 runs reached it)
+   ap_nb    t0=10: 7863 (10/10)  t0=30: 7200 (10/10)  t0=100: 8563 (9/10)  t0=300: 7284 (10/10)  t0=1000: 7482 (10/10)  t0=3000: 7710 (10/10)
+   qclt_nb  t0=10: 8194 (10/10)  t0=30: 7232 (10/10)  t0=100: 8242 (10/10)  t0=300: 8056 (10/10)  t0=1000: 8244 (10/10)  t0=3000: 6098 (9/10)
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/tdrjmcmc_t0_sweep.pdf
+[chirp_snr40_tf] iterations to match >= 0.95: Fisher median 462 (10/10 runs reached it)
+   ap_nb    t0=10: 969 (10/10)  t0=30: 948 (10/10)  t0=100: 824 (10/10)  t0=300: 642 (10/10)  t0=1000: 462 (10/10)  t0=3000: 462 (10/10)
+   qclt_nb  t0=10: 888 (10/10)  t0=30: 1082 (10/10)  t0=100: 1104 (10/10)  t0=300: 655 (10/10)  t0=1000: 438 (10/10)  t0=3000: 438 (10/10)
+[hard_snr40_prior] iterations to match >= 0.95: Fisher median 5664 (10/10 runs reached it)
+   ap_nb    t0=10: 7863 (10/10)  t0=30: 7200 (10/10)  t0=100: 8563 (9/10)  t0=300: 7284 (10/10)  t0=1000: 7482 (10/10)  t0=3000: 7710 (10/10)
+   qclt_nb  t0=10: 8194 (10/10)  t0=30: 7232 (10/10)  t0=100: 8242 (10/10)  t0=300: 8056 (10/10)  t0=1000: 8244 (10/10)  t0=3000: 6098 (9/10)
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/tdrjmcmc_t0_sweep.pdf

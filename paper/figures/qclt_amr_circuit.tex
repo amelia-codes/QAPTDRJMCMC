@@ -1,0 +1,11 @@
+\documentclass[tikz,border=5pt]{standalone}
+\usepackage{quantikz}
+\begin{document}
+\begin{quantikz}[row sep={0.62cm,between origins},column sep=0.78cm]
+\lstick{$\lvert P\rangle^{\otimes n_P}$} & \gate[wires=5,style={minimum width=1.42cm}]{U_{\mathrm{init}}} & \gate[wires=5,style={minimum width=1.42cm}]{U_{\mathrm{hist}}} & \gate[wires=5,style={minimum width=1.42cm}]{U_{\mathrm{coin}}} & \gate[wires=5,style={minimum width=1.42cm}]{U_{\mathrm{pair}}} & \gate[wires=5,style={minimum width=1.42cm}]{U_{\mathrm{iso}}} & \meter{} \\
+\lstick{$\lvert H\rangle^{\otimes n_H}$} & \qw & \qw & \qw & \qw & \qw & \meter{} \\
+\lstick{$\lvert C_{\mathrm{pair}}\rangle^{\otimes n_C}$} & \qw & \qw & \qw & \qw & \qw & \meter{} \\
+\lstick{$\lvert C_{\mathrm{iso}}\rangle^{\otimes n_I}$} & \qw & \qw & \qw & \qw & \qw & \meter{} \\
+\lstick{$\lvert a\rangle$} & \qw & \qw & \qw & \qw & \qw & \meter{}
+\end{quantikz}
+\end{document}

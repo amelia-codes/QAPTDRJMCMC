@@ -1,0 +1,42 @@
+QCLT kick vs qcov circuit: TV distance 5.6e-16 (114 qubits)
+gauss     reference: 200000 draws (exact)
+banana    reference: 200000 draws (exact)
+logistic  reference: 100000 draws, importance-sampling ESS 175596
+rv        reference: 100000 draws, importance-sampling ESS 175404
+hep       reference: 100000 draws, importance-sampling ESS 170549
+cm        reference: 100000 draws, importance-sampling ESS 192349
+240 runs in 768s
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/applications_posteriors.pdf
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/applications_accuracy.pdf
+
+problem   sampler final error ESS/1k evals adaptive acc. kick qubits
+gauss     rw          0.758         0.37           nan           0
+gauss     am          0.040        17.59         0.241           0
+gauss     qclt        0.054         7.75         0.239        1404
+gauss     qamr_axis       0.481         1.57         0.001           0
+gauss     qamr        0.070         9.85         0.238         624
+banana    rw          0.120         3.12           nan           0
+banana    am          0.164         1.72         0.231           0
+banana    qclt        0.155         2.40         0.231         648
+banana    qamr_axis       0.092         4.72         0.232           0
+banana    qamr        0.206         1.64         0.215         288
+logistic  rw          0.047        21.88           nan           0
+logistic  am          0.039        47.73         0.234           0
+logistic  qclt        0.051        18.99         0.235         990
+logistic  qamr_axis       0.054        24.63         0.238           0
+logistic  qamr        0.054        24.59         0.231         440
+rv        rw          0.111         3.57           nan           0
+rv        am          0.041        30.93         0.238           0
+rv        qclt        0.044        11.95         0.231         990
+rv        qamr_axis       0.081        15.21         0.235           0
+rv        qamr        0.042        13.91         0.234         440
+hep       rw          0.058         8.28           nan           0
+hep       am          0.050        38.50         0.234           0
+hep       qclt        0.049        17.81         0.232         990
+hep       qamr_axis       0.042        19.59         0.235           0
+hep       qamr        0.054        16.84         0.236         440
+cm        rw          0.115         2.79           nan           0
+cm        am          0.026        33.12         0.241           0
+cm        qclt        0.038        27.84         0.233         648
+cm        qamr_axis       0.032        18.14         0.237           0
+cm        qamr        0.027        29.54         0.236         288

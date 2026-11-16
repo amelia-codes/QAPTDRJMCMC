@@ -1,0 +1,78 @@
+96 runs in 4177s
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/apt_cost.pdf
+[easy] Naive, fixed random steps (classical)  reach 0.95:   3.21e+04 evals (8/8 runs),    3.0 CPU s
+[easy] Fisher, finite-difference derivatives (classical) reach 0.95:   7.53e+04 evals (8/8 runs),    3.3 CPU s
+[easy] Fisher, if derivatives were free (classical) reach 0.95:   1.23e+04 evals (8/8 runs)
+[easy] AP, Tian et al. (classical)            reach 0.95:   2.07e+04 evals (8/8 runs),    5.8 CPU s
+[easy] QCLT-AP (quantum kick, simulated)      reach 0.95:   2.99e+04 evals (8/8 runs),    7.7 CPU s
+[easy] QCLT + AMR, ours (quantum kick, simulated; 6-bit registers) reach 0.95:   2.29e+04 evals (8/8 runs),   10.4 CPU s
+[easy] BayesWave, default settings (classical) reach 0.95:      4e+06 evals (4/4 runs),   10.5 CPU s (C)
+[easy] BayesWave, matched settings (classical) reach 0.95:    2.8e+06 evals (4/4 runs),    3.4 CPU s (C)
+[hard] Naive, fixed random steps (classical)  reach 0.95:   4.59e+05 evals (7/8 runs),   50.3 CPU s
+[hard] Fisher, finite-difference derivatives (classical) reach 0.95:   9.49e+05 evals (8/8 runs),   38.0 CPU s
+[hard] Fisher, if derivatives were free (classical) reach 0.95:   5.58e+04 evals (8/8 runs)
+[hard] AP, Tian et al. (classical)            reach 0.95:   1.75e+05 evals (8/8 runs),   74.6 CPU s
+[hard] QCLT-AP (quantum kick, simulated)      reach 0.95:   2.32e+05 evals (8/8 runs),  144.7 CPU s
+[hard] QCLT + AMR, ours (quantum kick, simulated; 6-bit registers) reach 0.95:   2.02e+05 evals (8/8 runs),  194.3 CPU s
+[hard] BayesWave, default settings (classical) reach 0.95:      2e+07 evals (3/4 runs),   32.5 CPU s (C)
+[hard] BayesWave, matched settings (classical) reach 0.95:    1.2e+07 evals (4/4 runs),   29.0 CPU s (C)
+[easy] median cost to reach 0.95 vs t0 (iterations | evaluations):
+   Naive, fixed random steps (classical)  iters  3.66e+03 (8/8 runs reached)
+   Fisher, finite-difference derivatives (classical) iters  715 (8/8 runs reached)
+   AP, Tian et al. (classical)            iters  t0=10: 3.21e+03 (8/8)  t0=100: 3.51e+03 (8/8)  t0=300: 2.8e+03 (8/8)  t0=1000: 2.93e+03 (8/8)  t0=3000: 3.76e+03 (8/8)
+   QCLT-AP (quantum kick, simulated)      iters  t0=10: 3.94e+03 (8/8)  t0=100: 4.74e+03 (8/8)  t0=300: 4.71e+03 (8/8)  t0=1000: 4.59e+03 (8/8)  t0=3000: 4.34e+03 (8/8)
+   QCLT + AMR, ours (quantum kick, simulated; 6-bit registers) iters  t0=10: 4.92e+03 (8/8)  t0=100: 4.39e+03 (8/8)  t0=300: 3.56e+03 (8/8)  t0=1000: 3.42e+03 (8/8)  t0=3000: 4.15e+03 (8/8)
+   BayesWave, default settings (classical) iters  2e+05 (4/4 runs reached)
+   BayesWave, matched settings (classical) iters  3.5e+05 (4/4 runs reached)
+   Naive, fixed random steps (classical)  evals  3.21e+04 (8/8 runs reached)
+   Fisher, finite-difference derivatives (classical) evals  7.53e+04 (8/8 runs reached)
+   Fisher, if derivatives were free (classical) evals  1.23e+04 (8/8 runs reached)
+   AP, Tian et al. (classical)            evals  t0=10: 2.18e+04 (8/8)  t0=100: 2.35e+04 (8/8)  t0=300: 2.07e+04 (8/8)  t0=1000: 2.33e+04 (8/8)  t0=3000: 3.1e+04 (8/8)
+   QCLT-AP (quantum kick, simulated)      evals  t0=10: 2.59e+04 (8/8)  t0=100: 2.92e+04 (8/8)  t0=300: 2.99e+04 (8/8)  t0=1000: 3.06e+04 (8/8)  t0=3000: 3.32e+04 (8/8)
+   QCLT + AMR, ours (quantum kick, simulated; 6-bit registers) evals  t0=10: 2.71e+04 (8/8)  t0=100: 2.63e+04 (8/8)  t0=300: 2.29e+04 (8/8)  t0=1000: 2.45e+04 (8/8)  t0=3000: 3.27e+04 (8/8)
+   BayesWave, default settings (classical) evals  4e+06 (4/4 runs reached)
+   BayesWave, matched settings (classical) evals  2.8e+06 (4/4 runs reached)
+[hard] median cost to reach 0.95 vs t0 (iterations | evaluations):
+   Naive, fixed random steps (classical)  iters  6.88e+04 (7/8 runs reached)
+   Fisher, finite-difference derivatives (classical) iters  9.46e+03 (8/8 runs reached)
+   AP, Tian et al. (classical)            iters  t0=10: 3.58e+04 (8/8)  t0=100: 4.23e+04 (8/8)  t0=300: 3.54e+04 (8/8)  t0=1000: 2.9e+04 (7/8)  t0=3000: 3.43e+04 (8/8)
+   QCLT-AP (quantum kick, simulated)      iters  t0=10: 5.08e+04 (8/8)  t0=100: 4.17e+04 (7/8)  t0=300: 5.14e+04 (8/8)  t0=1000: 5.51e+04 (7/8)  t0=3000: 4.73e+04 (8/8)
+   QCLT + AMR, ours (quantum kick, simulated; 6-bit registers) iters  t0=10: 4.93e+04 (7/8)  t0=100: 5e+04 (8/8)  t0=300: 4.88e+04 (8/8)  t0=1000: 4.41e+04 (8/8)  t0=3000: 3.84e+04 (7/8)
+   BayesWave, default settings (classical) iters  1e+06 (3/4 runs reached)
+   BayesWave, matched settings (classical) iters  1.5e+06 (4/4 runs reached)
+   Naive, fixed random steps (classical)  evals  4.59e+05 (7/8 runs reached)
+   Fisher, finite-difference derivatives (classical) evals  9.49e+05 (8/8 runs reached)
+   Fisher, if derivatives were free (classical) evals  5.58e+04 (8/8 runs reached)
+   AP, Tian et al. (classical)            evals  t0=10: 1.78e+05 (8/8)  t0=100: 2.14e+05 (8/8)  t0=300: 1.75e+05 (8/8)  t0=1000: 1.45e+05 (7/8)  t0=3000: 1.78e+05 (8/8)
+   QCLT-AP (quantum kick, simulated)      evals  t0=10: 2.29e+05 (8/8)  t0=100: 1.86e+05 (7/8)  t0=300: 2.32e+05 (8/8)  t0=1000: 2.45e+05 (7/8)  t0=3000: 2.18e+05 (8/8)
+   QCLT + AMR, ours (quantum kick, simulated; 6-bit registers) evals  t0=10: 2.02e+05 (7/8)  t0=100: 2.06e+05 (8/8)  t0=300: 2.02e+05 (8/8)  t0=1000: 1.86e+05 (8/8)  t0=3000: 1.67e+05 (7/8)
+   BayesWave, default settings (classical) evals  2e+07 (3/4 runs reached)
+   BayesWave, matched settings (classical) evals  1.2e+07 (4/4 runs reached)
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/apt_t0.pdf
+[easy] evaluations to reach 0.95: adaptive vs fixed temperature ladder
+   Naive, fixed random steps (classical)  adaptive    3.21e+04 (8/8 runs reached)
+   Naive, fixed random steps (classical)  fixed       3.27e+04 (8/8 runs reached)
+   Fisher, finite-difference derivatives (classical) adaptive    7.53e+04 (8/8 runs reached)
+   Fisher, finite-difference derivatives (classical) fixed       8.58e+04 (8/8 runs reached)
+   AP, Tian et al. (classical)            adaptive    2.07e+04 (8/8 runs reached)
+   AP, Tian et al. (classical)            fixed       2.07e+04 (8/8 runs reached)
+   QCLT-AP (quantum kick, simulated)      adaptive    2.99e+04 (8/8 runs reached)
+   QCLT-AP (quantum kick, simulated)      fixed        2.5e+04 (8/8 runs reached)
+   QCLT + AMR, ours (quantum kick, simulated; 6-bit registers) adaptive    2.29e+04 (8/8 runs reached)
+   QCLT + AMR, ours (quantum kick, simulated; 6-bit registers) fixed        3.1e+04 (8/8 runs reached)
+   BayesWave, matched settings (classical) adaptive     2.8e+06 (4/4 runs reached)
+   BayesWave, matched settings, fixed temperature ladder (classical) fixed        1.6e+06 (4/4 runs reached)
+[hard] evaluations to reach 0.95: adaptive vs fixed temperature ladder
+   Naive, fixed random steps (classical)  adaptive    4.59e+05 (7/8 runs reached)
+   Naive, fixed random steps (classical)  fixed       3.87e+05 (6/8 runs reached)
+   Fisher, finite-difference derivatives (classical) adaptive    9.49e+05 (8/8 runs reached)
+   Fisher, finite-difference derivatives (classical) fixed       1.24e+06 (8/8 runs reached)
+   AP, Tian et al. (classical)            adaptive    1.75e+05 (8/8 runs reached)
+   AP, Tian et al. (classical)            fixed       2.02e+05 (7/8 runs reached)
+   QCLT-AP (quantum kick, simulated)      adaptive    2.32e+05 (8/8 runs reached)
+   QCLT-AP (quantum kick, simulated)      fixed       3.02e+05 (7/8 runs reached)
+   QCLT + AMR, ours (quantum kick, simulated; 6-bit registers) adaptive    2.02e+05 (8/8 runs reached)
+   QCLT + AMR, ours (quantum kick, simulated; 6-bit registers) fixed       2.31e+05 (2/8 runs reached)
+   BayesWave, matched settings (classical) adaptive     1.2e+07 (4/4 runs reached)
+   BayesWave, matched settings, fixed temperature ladder (classical) fixed        1.2e+07 (4/4 runs reached)
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/apt_tempering.pdf

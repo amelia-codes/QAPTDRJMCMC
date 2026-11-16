@@ -1,0 +1,30 @@
+QCLT, local 8-bit                                median    8.77%  (10-90%: 6.66% - 9.17%)
+window-only kick, pilot covariance               median   76.15%  (10-90%: 18.36% - 1133.84%)
+QCLT + AMR, 8-bit                                median    3.97%  (10-90%: 0.93% - 10.34%)
+zero-mean kick, AMR window                       median  224.69%  (10-90%: 32.20% - 1428.94%)
+single-pair kick (DE-MCz), local 8-bit           median    8.31%  (10-90%: 4.28% - 9.87%)
+zero-mean kick, local 8-bit                      median  204.32%  (10-90%: 32.84% - 1321.94%)
+diagonal-only kick, local 8-bit                  median   63.61%  (10-90%: 31.69% - 71.20%)
+isotropic step (scale given)                     median   69.20%  (10-90%: 64.17% - 70.71%)
+max bound (all rho = +1)                         median   11.58%  (10-90%: 8.65% - 62.41%)
+min bound (all rho = -1)                         median  133.64%  (10-90%: 6.66% - 139.16%)
+pairwise moments (384 shots) + loader            median   11.80%  (10-90%: 4.96% - 20.07%)
+SWAP test (384 shots) + loader                   median    9.28%  (10-90%: 7.23% - 14.04%)
+amplitude estimation (384 queries) + loader      median    8.32%  (10-90%: 5.53% - 11.56%)
+d=2, whole history: optimal Gaussian 1.00; AM 0.96; AM, Ledoit-Wolf shrinkage 0.94; DE-MCz 0.96; diagonal only 0.45; isotropic 0.45; max bound 0.00; min bound 0.00; pairwise readout + loader 0.44; SWAP readout + loader 0.63; QAE readout + loader 0.73; window-only kick, AMR 6-bit 1.04
+d=2 K= 3: QCLT lazy 0.47; QCLT lazy + AMR 0.37; QCLT full + AMR 0.34; zero-mean, K states, about AMR centre 0.53; zero-mean, K states, about box centre 0.37; AM from the same K states 0.32; single pair from the K states 0.37
+d=2 K= 4: QCLT lazy 0.57; QCLT lazy + AMR 0.48; QCLT full + AMR 0.55; zero-mean, K states, about AMR centre 0.62; zero-mean, K states, about box centre 0.42; AM from the same K states 0.49; single pair from the K states 0.57
+d=2 K= 6: QCLT lazy 0.62; QCLT lazy + AMR 0.55; QCLT full + AMR 0.67; zero-mean, K states, about AMR centre 0.69; zero-mean, K states, about box centre 0.47; AM from the same K states 0.62; single pair from the K states 0.67
+d=2 K= 8: QCLT lazy 0.66; QCLT lazy + AMR 0.61; QCLT full + AMR 0.75; zero-mean, K states, about AMR centre 0.77; zero-mean, K states, about box centre 0.49; AM from the same K states 0.73; single pair from the K states 0.76
+d=2 K=12: QCLT lazy 0.70; QCLT lazy + AMR 0.65; QCLT full + AMR 0.83; zero-mean, K states, about AMR centre 0.84; zero-mean, K states, about box centre 0.53; AM from the same K states 0.83; single pair from the K states 0.84
+d=2 K=16: QCLT lazy 0.71; QCLT lazy + AMR 0.68; QCLT full + AMR 0.88; zero-mean, K states, about AMR centre 0.87; zero-mean, K states, about box centre 0.53; AM from the same K states 0.86; single pair from the K states 0.87
+d=2 K=24: QCLT lazy 0.71; QCLT lazy + AMR 0.67; QCLT full + AMR 0.90; zero-mean, K states, about AMR centre 0.90; zero-mean, K states, about box centre 0.57; AM from the same K states 0.89; single pair from the K states 0.90
+d=5, whole history: optimal Gaussian 1.00; AM 0.89; AM, Ledoit-Wolf shrinkage 0.77; DE-MCz 0.89; diagonal only 0.27; isotropic 0.06; max bound 0.00; min bound 0.00; pairwise readout + loader 0.01; SWAP readout + loader 0.10; QAE readout + loader 0.11; window-only kick, AMR 6-bit 0.91
+d=5 K= 3: QCLT lazy 0.15; QCLT lazy + AMR 0.14; QCLT full + AMR 0.10; zero-mean, K states, about AMR centre 0.00; zero-mean, K states, about box centre 0.00; AM from the same K states 0.00; single pair from the K states 0.00
+d=5 K= 4: QCLT lazy 0.18; QCLT lazy + AMR 0.16; QCLT full + AMR 0.10; zero-mean, K states, about AMR centre 0.00; zero-mean, K states, about box centre 0.00; AM from the same K states 0.00; single pair from the K states 0.00
+d=5 K= 6: QCLT lazy 0.22; QCLT lazy + AMR 0.20; QCLT full + AMR 0.16; zero-mean, K states, about AMR centre 0.13; zero-mean, K states, about box centre 0.02; AM from the same K states 0.06; single pair from the K states 0.07
+d=5 K= 8: QCLT lazy 0.23; QCLT lazy + AMR 0.23; QCLT full + AMR 0.27; zero-mean, K states, about AMR centre 0.24; zero-mean, K states, about box centre 0.03; AM from the same K states 0.18; single pair from the K states 0.19
+d=5 K=12: QCLT lazy 0.24; QCLT lazy + AMR 0.28; QCLT full + AMR 0.44; zero-mean, K states, about AMR centre 0.41; zero-mean, K states, about box centre 0.04; AM from the same K states 0.37; single pair from the K states 0.38
+d=5 K=16: QCLT lazy 0.24; QCLT lazy + AMR 0.30; QCLT full + AMR 0.54; zero-mean, K states, about AMR centre 0.52; zero-mean, K states, about box centre 0.05; AM from the same K states 0.50; single pair from the K states 0.51
+d=5 K=24: QCLT lazy 0.25; QCLT lazy + AMR 0.32; QCLT full + AMR 0.67; zero-mean, K states, about AMR centre 0.66; zero-mean, K states, about box centre 0.05; AM from the same K states 0.64; single pair from the K states 0.65
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/quantum_walk/qclt_vs_covariance_methods.pdf and /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/quantum_walk/qclt_proposal_efficiency.pdf

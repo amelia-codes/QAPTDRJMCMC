@@ -1,0 +1,7 @@
+QCLT move vs qcov circuit (432 qubits, 13131 gates): TV distance of exact distributions = 5.65e-16
+48 runs x 40000 iterations x 8 temperatures in 599s
+sampler            conv. pairs  conv. length  ESS/1k logL  ESS/1k K  acc move  s_c (cold)  ms/iter  post match  post <K> R-hat logL
+Fisher TD-RJMCMC      10/120           27350          1.4       1.3     0.279           1     5.13       0.937      5.40      1.071
+AP (Tian et al.)       0/120             nan          0.9       1.1     0.202        0.25     4.50       0.938      5.25      1.145
+QCLT-AP                0/120             nan          0.9       1.2     0.198        3.15     4.69       0.935      5.44      1.158
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/tdrjmcmc_qclt.pdf

@@ -1,0 +1,6 @@
+T0 = 1000, N_MIN_HIST = 20, methods = ['qamr', 'qamr_nb'], tag = '_amr', data = chirp, SNR = 20.0, birth = tf, N_max = 10, T_MAX = 200.0, seeds = 16
+QCLT move vs qcov circuit (432 qubits, 13131 gates): TV distance of exact distributions = 5.65e-16
+32 runs x 40000 iterations x 8 temperatures in 753s
+sampler            it->match0.9 conv. pairs  conv. length  ESS/1k logL  ESS/1k N  acc move  s_c (cold)  ms/iter  post match  post <N> R-hat logL
+QCLT + AMR, ours (quantum kick, simulated; 6-bit registers)          524     0/120             nan          1.1       0.9     0.177        1.44     7.26       0.940      5.16      1.127
+QCLT + AMR, TF birth, ours (quantum kick, simulated; 6-bit registers)          507     0/120             nan          1.5       1.6     0.153           2     3.81       0.936      5.40      1.355

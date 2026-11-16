@@ -1,0 +1,56 @@
+256 runs in 5867s
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/apt_cost.pdf
+[easy] Naive (fixed random steps)             reach 0.95:   3.21e+04 evals (8/8 runs),    3.0 CPU s
+[easy] Fisher, finite-difference derivatives  reach 0.95:   7.53e+04 evals (8/8 runs),    3.3 CPU s
+[easy] Fisher, if derivatives were free       reach 0.95:   1.23e+04 evals (8/8 runs)
+[easy] AP (Tian et al.)                       reach 0.95:   2.07e+04 evals (8/8 runs),    5.8 CPU s
+[easy] QCLT-AP (quantum)                      reach 0.95:   2.99e+04 evals (8/8 runs),    7.7 CPU s
+[easy] BayesWave, default settings            reach 0.95:      4e+06 evals (4/4 runs),   10.5 CPU s (C)
+[easy] BayesWave, matched settings            reach 0.95:    2.8e+06 evals (4/4 runs),    3.4 CPU s (C)
+[hard] Naive (fixed random steps)             reach 0.95:   4.59e+05 evals (7/8 runs),   50.3 CPU s
+[hard] Fisher, finite-difference derivatives  reach 0.95:   9.49e+05 evals (8/8 runs),   38.0 CPU s
+[hard] Fisher, if derivatives were free       reach 0.95:   5.58e+04 evals (8/8 runs)
+[hard] AP (Tian et al.)                       reach 0.95:   1.75e+05 evals (8/8 runs),   74.6 CPU s
+[hard] QCLT-AP (quantum)                      reach 0.95:   2.32e+05 evals (8/8 runs),  144.7 CPU s
+[hard] BayesWave, default settings            reach 0.95:      2e+07 evals (3/4 runs),   32.5 CPU s (C)
+[hard] BayesWave, matched settings            reach 0.95:    1.2e+07 evals (4/4 runs),   29.0 CPU s (C)
+[easy] median cost to reach 0.95 vs t0 (iterations | evaluations):
+   Naive (fixed random steps)             iters  3.66e+03 (8/8 runs reached)
+   Fisher, finite-difference derivatives  iters  715 (8/8 runs reached)
+   AP (Tian et al.)                       iters  t0=10: 3.21e+03 (8/8)  t0=100: 3.51e+03 (8/8)  t0=300: 2.8e+03 (8/8)  t0=1000: 2.93e+03 (8/8)  t0=3000: 3.76e+03 (8/8)
+   QCLT-AP (quantum)                      iters  t0=10: 3.94e+03 (8/8)  t0=100: 4.74e+03 (8/8)  t0=300: 4.71e+03 (8/8)  t0=1000: 4.59e+03 (8/8)  t0=3000: 4.34e+03 (8/8)
+   Naive (fixed random steps)             evals  3.21e+04 (8/8 runs reached)
+   Fisher, finite-difference derivatives  evals  7.53e+04 (8/8 runs reached)
+   Fisher, if derivatives were free       evals  1.23e+04 (8/8 runs reached)
+   AP (Tian et al.)                       evals  t0=10: 2.18e+04 (8/8)  t0=100: 2.35e+04 (8/8)  t0=300: 2.07e+04 (8/8)  t0=1000: 2.33e+04 (8/8)  t0=3000: 3.1e+04 (8/8)
+   QCLT-AP (quantum)                      evals  t0=10: 2.59e+04 (8/8)  t0=100: 2.92e+04 (8/8)  t0=300: 2.99e+04 (8/8)  t0=1000: 3.06e+04 (8/8)  t0=3000: 3.32e+04 (8/8)
+[hard] median cost to reach 0.95 vs t0 (iterations | evaluations):
+   Naive (fixed random steps)             iters  6.88e+04 (7/8 runs reached)
+   Fisher, finite-difference derivatives  iters  9.46e+03 (8/8 runs reached)
+   AP (Tian et al.)                       iters  t0=10: 3.58e+04 (8/8)  t0=100: 4.23e+04 (8/8)  t0=300: 3.54e+04 (8/8)  t0=1000: 2.9e+04 (7/8)  t0=3000: 3.43e+04 (8/8)
+   QCLT-AP (quantum)                      iters  t0=10: 5.08e+04 (8/8)  t0=100: 4.17e+04 (7/8)  t0=300: 5.14e+04 (8/8)  t0=1000: 5.51e+04 (7/8)  t0=3000: 4.73e+04 (8/8)
+   Naive (fixed random steps)             evals  4.59e+05 (7/8 runs reached)
+   Fisher, finite-difference derivatives  evals  9.49e+05 (8/8 runs reached)
+   Fisher, if derivatives were free       evals  5.58e+04 (8/8 runs reached)
+   AP (Tian et al.)                       evals  t0=10: 1.78e+05 (8/8)  t0=100: 2.14e+05 (8/8)  t0=300: 1.75e+05 (8/8)  t0=1000: 1.45e+05 (7/8)  t0=3000: 1.78e+05 (8/8)
+   QCLT-AP (quantum)                      evals  t0=10: 2.29e+05 (8/8)  t0=100: 1.86e+05 (7/8)  t0=300: 2.32e+05 (8/8)  t0=1000: 2.45e+05 (7/8)  t0=3000: 2.18e+05 (8/8)
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/apt_t0.pdf
+[easy] evaluations to reach 0.95: adaptive vs fixed temperature ladder
+   Naive (fixed random steps)             adaptive    3.21e+04 (8/8 runs reached)
+   Naive (fixed random steps)             fixed       3.27e+04 (8/8 runs reached)
+   Fisher, finite-difference derivatives  adaptive    7.53e+04 (8/8 runs reached)
+   Fisher, finite-difference derivatives  fixed       8.58e+04 (8/8 runs reached)
+   AP (Tian et al.)                       adaptive    2.07e+04 (8/8 runs reached)
+   AP (Tian et al.)                       fixed       2.07e+04 (8/8 runs reached)
+   QCLT-AP (quantum)                      adaptive    2.99e+04 (8/8 runs reached)
+   QCLT-AP (quantum)                      fixed        2.5e+04 (8/8 runs reached)
+[hard] evaluations to reach 0.95: adaptive vs fixed temperature ladder
+   Naive (fixed random steps)             adaptive    4.59e+05 (7/8 runs reached)
+   Naive (fixed random steps)             fixed       3.87e+05 (6/8 runs reached)
+   Fisher, finite-difference derivatives  adaptive    9.49e+05 (8/8 runs reached)
+   Fisher, finite-difference derivatives  fixed       1.24e+06 (8/8 runs reached)
+   AP (Tian et al.)                       adaptive    1.75e+05 (8/8 runs reached)
+   AP (Tian et al.)                       fixed       2.02e+05 (7/8 runs reached)
+   QCLT-AP (quantum)                      adaptive    2.32e+05 (8/8 runs reached)
+   QCLT-AP (quantum)                      fixed       3.02e+05 (7/8 runs reached)
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/apt_tempering.pdf

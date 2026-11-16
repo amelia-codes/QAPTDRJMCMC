@@ -1,0 +1,14 @@
+1116 walks in 471s
+wavelet reference mean [0.52428 0.29791 0.65055 0.87871 0.1243 ] spread [0.000712 0.000931 0.025297 0.005736 0.080047]
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/adaptive_grid_examples.pdf
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/adaptive_grid_comparison.pdf
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/adaptive_grid_criteria.pdf
+
+final error (true spreads, median)       narrow    wavelet | decoy: runs that found peak, time in peak
+  fixed grid                          2.125    31.709 |   58%   0.57 (correct 0.70)
+  fixed grid, 16 qubits               1.912    40.199 |   92%   0.87 (correct 0.70)
+  16 qubits + adaptive step           0.083     4.876 |   75%   0.63 (correct 0.70)
+  zoom in only                        0.072     5.718 |   17%   0.00 (correct 0.70)
+  zoom in & out                       0.071     0.607 |   17%   0.00 (correct 0.70)
+  zoom in & out + look-around         0.077     1.390 |  100%   1.00 (correct 0.70)
+  several windows + look-around       0.048     1.071 |  100%   0.84 (correct 0.70)

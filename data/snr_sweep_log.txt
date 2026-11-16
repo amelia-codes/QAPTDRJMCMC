@@ -1,0 +1,7 @@
+BayesWave: 16 runs in 348s
+TD-RJMCMC: 48 runs in 672s
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/snr_sweep.pdf
+BayesWave (real, C)          SNR 10: 0.684  SNR 20: 0.923  SNR 40: 0.983  SNR 80: 0.994
+Fisher TD-RJMCMC (ours)      SNR 10: 0.771  SNR 20: 0.939  SNR 40: 0.974  SNR 80: 0.994
+AP, Tian et al. (ours)       SNR 10: 0.774  SNR 20: 0.935  SNR 40: 0.976  SNR 80: 0.995
+QCLT-AP (ours)               SNR 10: 0.770  SNR 20: 0.931  SNR 40: 0.976  SNR 80: 0.995

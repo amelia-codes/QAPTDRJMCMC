@@ -1,0 +1,9 @@
+QCLT kernel vs qcov circuit (4 history registers x 5 params x 16 bits, 432 qubits, 13131 gates): TV distance of exact distributions = 5.32e-16
+48 runs x 20000 iterations x 8 temperatures in 303s
+
+pooled posterior median of log L - log L(injection): 0.55
+method                  hit median logL  hit match>=0.9  R-hat logL  ESS/1k (logL)  ESS/1k (K)  acc cov  ms/iter  post match  post <K>
+BayesWave (Fisher)                 1419             468       1.137            2.3         2.5    0.279     4.95       0.938      5.24
+Adaptive (classical)               3679             677       1.402            2.0         2.2    0.288     2.80       0.923      6.66
+QCLT (quantum)                     3974             861       1.227            1.7         1.9    0.576     2.91       0.925      6.71
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/bayeswave_qclt.pdf

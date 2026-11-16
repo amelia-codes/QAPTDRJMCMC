@@ -1,0 +1,12 @@
+64 runs in 6115s
+
+waveform evaluations to reach match 0.95 (median over 8 runs; runs that got there):
+  [easy] Naive (fixed random steps)         1.32e+04 evals (8/8),    1.8 CPU s
+  [easy] Fisher (uses derivatives)           3.3e+04 evals (8/8),    1.4 CPU s
+  [easy] AP, Tian et al. (adaptive)         1.08e+04 evals (8/8),    3.8 CPU s
+  [easy] QCLT-AP (quantum adaptive)         1.25e+04 evals (8/8),    5.5 CPU s
+  [hard] Naive (fixed random steps)         1.83e+05 evals (8/8),   21.1 CPU s
+  [hard] Fisher (uses derivatives)          4.72e+05 evals (8/8),   17.0 CPU s
+  [hard] AP, Tian et al. (adaptive)         8.93e+04 evals (8/8),   41.7 CPU s
+  [hard] QCLT-AP (quantum adaptive)         1.21e+05 evals (8/8),   71.0 CPU s
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/cost_benchmark.pdf

@@ -1,0 +1,8 @@
+TD-RJMCMC: 64 runs in 327s
+saved /home/rasmitdevkota/projects/QAPTDRJMCMC/figures/snr_sweep.pdf
+BayesWave, default settings (real; classical) SNR 10: 0.684  SNR 20: 0.923  SNR 40: 0.983  SNR 80: 0.994
+BayesWave, matched settings (real; classical) SNR 20: 0.920  SNR 40: 0.979
+Fisher TD-RJMCMC (ours; classical) SNR 10: 0.731  SNR 20: 0.918  SNR 40: 0.979  SNR 80: 0.994
+AP, Tian et al. (ours; classical) SNR 10: 0.732  SNR 20: 0.920  SNR 40: 0.979  SNR 80: 0.995
+QCLT-AP (ours; quantum kick, simulated) SNR 10: 0.738  SNR 20: 0.929  SNR 40: 0.980  SNR 80: 0.994
+QCLT + AMR (ours; quantum kick, simulated) SNR 10: 0.722  SNR 20: 0.917  SNR 40: 0.978  SNR 80: 0.995

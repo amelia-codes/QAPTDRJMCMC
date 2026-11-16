@@ -1,0 +1,1 @@
+BayesWave hard case: 4 runs in 715s; injected SNR [40.0, 40.0, 40.0, 40.0]
