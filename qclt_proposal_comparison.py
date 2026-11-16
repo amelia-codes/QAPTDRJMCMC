@@ -434,6 +434,15 @@ def plot():
     with open(DATA / "proposal_comparison.pkl", "rb") as f:
         z = pickle.load(f)
     paper_style.apply()
+    plt.rcParams.update({
+        "font.family": "DejaVu Serif",
+        "mathtext.fontset": "stix",
+        "text.usetex": False,
+        "axes.labelsize": 9,
+        "xtick.labelsize": 8,
+        "ytick.labelsize": 8,
+        "pdf.fonttype": 42,
+    })
     errs = z["errs"]
     groups = [
         ("QCLT", paper_style.COLORS["QCLT_AMR"], [
@@ -453,24 +462,43 @@ def plot():
             ("min bound (all rho = -1)", "Minimum correlation bound"),
             ("isotropic step (scale given)", "Isotropic covariance")]),
     ]
-    fig, ax = plt.subplots(figsize=(8.4, 6.2))
+    fig, ax = plt.subplots(figsize=(8.4, 3.5))              # covariance comparison only
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
     yt, labels, y = [], [], 0
-    for _, color, items in groups:
+    group_boundaries = []
+    for group_index, (_, color, items) in enumerate(groups):
         for key, label in items:
             lo, med, hi = np.quantile(100 * errs[key], [.1, .5, .9])
             bar_color = (paper_style.COLORS["QCLT_AMR"] if key.startswith("QCLT + AMR") else
-                         paper_style.COLORS["QCLT"] if key.startswith("QCLT,") else color)
-            ax.barh(y, med, height=.62, color=bar_color, alpha=.88)
-            ax.plot([lo, hi], [y, y], color=paper_style.INK, lw=.9)
+                         paper_style.COLORS["QCLT"] if key.startswith("QCLT,") else
+                         paper_style.COLORS["SWAP"] if key.startswith("SWAP test") else
+                         paper_style.COLORS["PAIRWISE"] if key.startswith("pairwise moments") else color)
+            ax.barh(y, med, height=.68, color=bar_color, alpha=.42,
+                    edgecolor=bar_color, linewidth=.25, zorder=2)
+            # 10th--90th percentile range, with a clear median marker.
+            ax.errorbar(med, y, xerr=[[med - lo], [hi - med]], fmt="o",
+                        markersize=2.8, markerfacecolor="white",
+                        markeredgecolor=paper_style.INK, markeredgewidth=.8,
+                        ecolor=paper_style.INK, elinewidth=.9, capsize=2.2,
+                        zorder=4)
             yt.append(y); labels.append(label); y += 1
-    ax.scatter([0], [y], marker="|", s=85, color=paper_style.COLORS["CLASSICAL"], linewidths=2)
+        if group_index < len(groups) - 1:
+            group_boundaries.append(y - .5)
+    ax.scatter([0], [y], marker="|", s=90, color=paper_style.COLORS["CLASSICAL"],
+               linewidths=2.2, zorder=5)
     yt.append(y); labels.append("Classical AM / DE-MCz, exact history")
+    for boundary in group_boundaries:
+        ax.axhline(boundary, color=paper_style.GRID, lw=.8, zorder=1)
     ax.set_yticks(yt, labels)
-    ax.invert_yaxis()
+    ax.tick_params(axis="y", length=0, pad=7)
+    ax.tick_params(axis="x", direction="out", length=3, color=paper_style.INK)
+    ax.set_ylim(y + .6, -.6)                                # inverted axis, trimmed padding
     ax.set_xscale("symlog", linthresh=.1)
     ax.set_xlim(-.1, 4000)
-    ax.set_xlabel(r"Covariance error (\%)")
-    ax.grid(axis="x", color=paper_style.GRID, lw=.6, which="both")
+    ax.set_xlabel("Covariance error (%)", labelpad=7)
+    ax.grid(axis="x", color=paper_style.GRID, lw=.55, which="major", alpha=.85)
+    ax.grid(axis="x", color=paper_style.GRID, lw=.35, which="minor", alpha=.45)
     ax.set_axisbelow(True)
     # Highlight the exact-history reference: it is the zero-error accuracy limit
     # in this covariance comparison, not a quantum method.
@@ -478,10 +506,12 @@ def plot():
                                          facecolor="none",
                                          edgecolor=paper_style.COLORS["QCLT_AMR"],
                                          linewidth=1.1))
-    for side in ("top", "right"):
+    for side in ("top", "right", "left"):
         ax.spines[side].set_visible(False)
-    fig.tight_layout()
-    fig.savefig(OUT / "qclt_vs_covariance_methods.pdf", bbox_inches="tight")
+    ax.spines["bottom"].set_color(paper_style.GRID)
+    ax.spines["bottom"].set_linewidth(.8)
+    fig.tight_layout(pad=1.15)
+    fig.savefig(OUT / "qclt_vs_covariance_methods.pdf", bbox_inches="tight", facecolor="white")
     plt.close(fig)
 
     full, reg, ks = z["full"], z["reg"], z["ks"]
@@ -493,32 +523,43 @@ def plot():
         "AM from the same K states": (colors["CLASSICAL"], "-", "s", "AM, same K states"),
         "single pair from the K states": (colors["CLASSICAL"], "-.", "^", "Single pair, same K states"),
         "zero-mean, K states, about AMR centre": (colors["APPROX"], "-", "v", "Uncentred, AMR centre"),
-        "zero-mean, K states, about box centre": ("#287271", ":", "v", "Uncentred, box centre"),
+        "zero-mean, K states, about box centre": (colors["APPROX"], ":", "v", "Uncentred, box centre"),
     }
     for d in (2, 5):
-        optimum = full[d]["optimal Gaussian (true covariance)"]["worst"]
+        if (d, N_HIST) not in reg:
+            raise RuntimeError(
+                "This data file predates QCLT+AMR normalization. Rerun the script without --plot-only "
+                "once to generate the full-history QCLT+AMR reference."
+            )
         fig, ax = plt.subplots(figsize=(6.5, 4.5))
         full_endpoint = {
             "AM from the same K states": "AM (Haario et al. 2001)",
             "single pair from the K states": "DE-MCz (ter Braak & Vrugt 2008)",
         }
+        qclt_amr_key = f"QCLT full + AMR, {REG_BITS}-bit (ours)"
+        qclt_amr_reference = np.array([
+            reg[(d, k)][qclt_amr_key]["worst"] for k in ks
+        ])
         for key, (color, ls, marker, label) in styles.items():
-            vals = np.array([reg[(d, k)][key]["worst"] for k in ks]) / optimum
-            se = np.array([reg[(d, k)][key]["worst_se"] for k in ks]) / optimum
+            vals = np.array([reg[(d, k)][key]["worst"] for k in ks]) / qclt_amr_reference
+            se = np.array([reg[(d, k)][key]["worst_se"] for k in ks]) / qclt_amr_reference
             xvals = list(ks)
             if key in full_endpoint:
                 end = full[d][full_endpoint[key]]
-                vals = np.r_[vals, end["worst"] / optimum]
-                se = np.r_[se, end["worst_se"] / optimum]
+                # Normalize whole-history classical endpoints against QCLT + AMR
+                # evaluated with the same history size, K = N_HIST.
+                reference_at_full_history = reg[(d, N_HIST)][qclt_amr_key]["worst"]
+                vals = np.r_[vals, end["worst"] / reference_at_full_history]
+                se = np.r_[se, end["worst_se"] / reference_at_full_history]
                 xvals.append(N_HIST)
             ax.fill_between(xvals, vals - 2 * se, vals + 2 * se, color=color, alpha=.1, lw=0)
             ax.plot(xvals, vals, ls=ls, marker=marker, ms=3, color=color, lw=1.1, label=label)
         ax.axhline(1, color=paper_style.INK, lw=.7)
         tickvals = list(ks) + [N_HIST]
         ax.set_xscale("log", base=2); ax.set_xticks(tickvals, [str(k) for k in tickvals])
-        ax.set_ylim(0, 1.08)
+        ax.set_ylim(bottom=0)  # show the QCLT + AMR reference line at 1
         ax.set_xlabel("Stored history states, K")
-        ax.set_ylabel(f"d={d}: worst-direction jump / optimum (1 = optimal)")
+        ax.set_ylabel(f"d={d}: worst-direction jump / QCLT + AMR (1 = QCLT + AMR)")
         ax.grid(color=paper_style.GRID, lw=.6); ax.set_axisbelow(True)
         for side in ("top", "right"): ax.spines[side].set_visible(False)
         handles, labels = ax.get_legend_handles_labels()
@@ -532,7 +573,7 @@ def plot():
 
 
 def run():
-    global D_TOY, K_TOY, MODES, SCALE2_TOY, ISO_VAR, X0
+    global D_TOY, K_TOY, MODES, SCALE2_TOY, ISO_VAR, X0, sample_walk, window_from_pilot
     from quantum_walk_study import D as D_TOY, K as K_TOY, MODES, SCALE2 as SCALE2_TOY, ISO_VAR, X0, sample_walk
     from amr_battle_test import window_from_pilot
     DATA.mkdir(parents=True, exist_ok=True)
@@ -552,6 +593,8 @@ def run():
             reg[(d, K)] = efficiency_register(d, K, post, Hf, amr, fixed, rng)
             print(f"d={d} K={K:2d}: " + "; ".join(f"{m.split(',')[0] if m.startswith('QCLT') else m} {v['worst'] / o:.2f}"
                                                 for m, v in reg[(d, K)].items()), flush=True)
+        # Extra full-history reference for normalizing the AM / DE-MCz endpoints.
+        reg[(d, N_HIST)] = efficiency_register(d, N_HIST, post, Hf, amr, fixed, rng)
     import pickle
     with open(DATA / "proposal_comparison.pkl", "wb") as f:
         pickle.dump(dict(errs=errs, full=full, reg=reg, ks=KS, b_shots=B_SHOTS, n_hist=N_HIST,
