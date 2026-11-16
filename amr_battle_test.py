@@ -50,6 +50,8 @@ def exact_step_covariance(modes_physical, center, axes, spacing):
 
 
 def relative_error(modes_physical, center, axes, spacing):
+    from quantum_walk_study import ideal_covariance
+
     predicted = exact_step_covariance(modes_physical, center, axes, spacing)
     target = ideal_covariance(modes_physical)
     return np.linalg.norm(predicted - target) / np.linalg.norm(target)

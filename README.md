@@ -32,7 +32,7 @@ Run these commands from the repository root. They use saved experiment data and 
 
 ```bash
 python qclt_step_comparison.py --plot-only
-python qclt_proposal_comparison.py --plot-only
+python qclt_proposal_comparison.py --table-only
 python amr_battle_test.py --plot-only
 python amr_tuning.py --plot-only
 ```

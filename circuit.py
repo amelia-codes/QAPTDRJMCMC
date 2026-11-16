@@ -4,8 +4,7 @@ import numpy as np
 from qiskit.primitives import StatevectorEstimator
 from qiskit_algorithms.gradients import ParamShiftEstimatorGradient
 
-# Create a circuit with a register of three qubits
-# change this to actual A later
+# Create a circuit with a register of three qubits change this to actual A later
 
 # beginning dimension
 m_0 = 8 # of variables

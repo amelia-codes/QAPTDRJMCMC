@@ -74,6 +74,9 @@ def swap_estimates(history, budget, rng):
 
 def pairwise_readout_circuit(history, p, q):
     """One actual 5-qubit pairwise covariance-entry circuit for K=3."""
+    from qiskit import QuantumCircuit, QuantumRegister
+    from qiskit.circuit.library import RYGate, StatePreparation
+
     index = QuantumRegister(2, "i")
     other = QuantumRegister(2, "j")
     ancilla = QuantumRegister(1, "value")
@@ -104,6 +107,9 @@ def pairwise_readout_circuit(history, p, q):
 
 def swap_readout_circuit(history):
     """One actual 5-qubit centered-column SWAP overlap circuit for K=3."""
+    from qiskit import QuantumCircuit, QuantumRegister
+    from qiskit.circuit.library import StatePreparation
+
     centered = history - history.mean(axis=0)
     first = np.pad(centered[:, 0], (0, 1))
     second = np.pad(centered[:, 1], (0, 1))
@@ -127,6 +133,11 @@ def swap_readout_circuit(history):
 
 
 def verify_resource_circuits():
+    from qiskit import QuantumCircuit, QuantumRegister
+    from qiskit.circuit.library import RYGate, StatePreparation
+    from qiskit.quantum_info import Statevector
+    from quantum_walk_study import make_walk
+
     history = next(all_lattice_histories())
     pairwise, pair_probability = pairwise_readout_circuit(history, 0, 1)
     swap, swap_probability = swap_readout_circuit(history)
@@ -143,10 +154,7 @@ def verify_resource_circuits():
 
 def generate():
     global D, K, SCALE2, ISO_VAR, X0, MODES
-    from qiskit import QuantumCircuit, QuantumRegister
-    from qiskit.circuit.library import RYGate, StatePreparation
-    from qiskit.quantum_info import Statevector
-    from quantum_walk_study import D, K, MODES, SCALE2, ISO_VAR, X0, make_walk
+    from quantum_walk_study import D, K, MODES, SCALE2, ISO_VAR, X0
     DATA.mkdir(parents=True, exist_ok=True)
     qubits = verify_resource_circuits()
     rng = np.random.default_rng(91002)
