@@ -2,6 +2,7 @@
 \documentclass[twocolumn,reprint,aps,prd,floatfix,amsmath,amssymb]{revtex4-2}
 
 \usepackage{amsmath,amssymb}
+\usepackage{booktabs}
 \usepackage{graphicx}
 \usepackage{xcolor}
 \usepackage{tikz}
@@ -113,14 +114,15 @@ The covariance experiment enumerates 64 branches of a two-dimensional walk with 
 \label{fig:step-generation}
 \end{figure*}
 
-The broader comparison includes direct history-based steps, covariance readout, and covariance approximations. In the 384-shot comparison, median errors are 3.97\% for QCLT with AMR, 8.77\% for QCLT on the informed local grid, 8.31\% for a single history-pair step, 11.80\% for pairwise moments, 9.28\% for SWAP overlap, and 8.32\% for amplitude estimation. The classical AM and DE-MCz reference methods are given exact history and therefore have zero covariance error by construction; this is an accuracy reference rather than an estimator with measurement cost.
+Table~\ref{tab:covariance-method-errors} gives the full comparison and the error distributions for each method. The classical AM and DE-MCz reference receives exact history covariance, so its error is zero by construction.
 
-\begin{figure*}[!t]
+\begin{table*}[!t]
 \centering
-\includegraphics[width=0.92\textwidth]{qclt_vs_covariance_methods.pdf}
-\caption{Median relative next-step covariance error for QCLT, covariance readout, and covariance approximations. Horizontal bars span the 10th--90th percentiles across history branches or AMR windows. Classical AM and DE-MCz receive exact history covariance.}
-\label{fig:covariance-methods}
-\end{figure*}
+\small
+\caption{Relative next-step covariance error for all methods in the comparison. $N$ is the number of branch, window, or measurement-repetition error samples, as appropriate. Readout methods use 384 total shots or queries and assume an ideal step loader.}
+\label{tab:covariance-method-errors}
+\input{figures/covariance_method_errors.tex}
+\end{table*}
 
 \subsection{When AMR improves covariance representation}
 
