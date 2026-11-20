@@ -14,6 +14,7 @@ claim of a quantum speedup.
 """
 
 import sys
+from statistics import NormalDist
 from pathlib import Path
 
 import matplotlib
@@ -27,7 +28,7 @@ from qcov import (add_const, check_coherent, history_pairs, iso_step,
 
 
 ROOT = Path(__file__).parent
-OUT = ROOT / "figures" / "quantum_walk_archive"
+OUT = ROOT / "figures" / "quantum_walk"
 DATA = ROOT / "data" / "quantum_walk"
 K, D, SCALE2, ISO_VAR = 3, 2, 2.38**2 / 2, 0.1
 X0 = np.array([0.69, 0.37])
@@ -206,6 +207,79 @@ def exact_unconditional_covariance(reg):
     return reg["adaptive_steps"] * basis @ lattice @ basis.T
 
 
+def conditional_standardized_steps(run):
+    """Whiten each measured walk using its history-conditional covariance."""
+    histories = run["hist"].reshape(len(run["hist"]), -1)
+    _, inverse = np.unique(histories, axis=0, return_inverse=True)
+    standardized = np.empty_like(run["physical_disp"], dtype=float)
+    for branch in np.unique(inverse):
+        indices = np.flatnonzero(inverse == branch)
+        covariance = run["pred"][indices[0]]
+        eigenvalues, eigenvectors = np.linalg.eigh((covariance + covariance.T) / 2)
+        if np.any(eigenvalues <= 0):
+            raise ValueError("A history-conditional step covariance is not positive definite")
+        whitening = eigenvectors / np.sqrt(eigenvalues)
+        standardized[indices] = run["physical_disp"][indices] @ whitening
+    return standardized
+
+
+def sliced_wasserstein_bootstrap(samples, seed, n_bootstrap=48, sample_size=8192,
+                                 n_directions=48):
+    """Return individual bootstrap estimates of sliced W1 distance to N(0,I).
+
+    The Gaussian reference quantiles are evaluated deterministically, avoiding
+    a second finite sample from adding noise to the distance estimate.
+    """
+    rng = np.random.default_rng(seed)
+    sample_size = min(sample_size, len(samples))
+    angles = np.linspace(0, np.pi, n_directions, endpoint=False)
+    directions = np.column_stack((np.cos(angles), np.sin(angles)))
+    normal = NormalDist()
+    gaussian_quantiles = np.fromiter(
+        (normal.inv_cdf((i + 0.5) / sample_size) for i in range(sample_size)),
+        dtype=float, count=sample_size)
+    errors = np.empty(n_bootstrap)
+    for replicate in range(n_bootstrap):
+        observed = samples[rng.integers(len(samples), size=sample_size)]
+        observed_projection = np.sort(observed @ directions.T, axis=0)
+        errors[replicate] = np.abs(
+            observed_projection - gaussian_quantiles[:, None]).mean(axis=0).mean()
+    return errors
+
+
+def plot_clt_convergence(results=None):
+    """Plot Gaussian convergence of standardized coherent QCLT step sums."""
+    if results is None:
+        results = np.load(DATA / "results.npz")
+    if "clt_wasserstein_samples" not in results:
+        raise RuntimeError("Individual convergence errors are missing; regenerate results with quantum_walk_study.py")
+    import paper_style
+    paper_style.apply()
+    steps = results["multi_steps"]
+    errors = results["clt_wasserstein_samples"]
+    mean = errors.mean(axis=1)
+    sd = errors.std(axis=1, ddof=1)
+    fig, ax = plt.subplots(figsize=(5.8, 3.9))
+    ax.errorbar(steps, mean, yerr=sd,
+                color=paper_style.COLORS["QCLT_AMR"], marker="o", ms=5,
+                capsize=3, lw=1.6,
+                label=r"QCLT walk (mean $\pm$ 1 bootstrap SD)")
+    guide = mean[0] * np.sqrt(steps[0] / steps)
+    ax.plot(steps, guide, ls="--", color=paper_style.MUTED, lw=1.0,
+            label=r"$N^{-1/2}$ reference")
+    ax.set_xticks(steps)
+    ax.set_xlabel("Number of QCLT steps, $N$")
+    ax.set_ylabel("Sliced Wasserstein distance to Gaussian")
+    paper_style.legend_below(ax)
+    ax.set_axisbelow(False)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    fig.tight_layout()
+    OUT.mkdir(parents=True, exist_ok=True)
+    fig.savefig(OUT / "qclt_clt_convergence.pdf", bbox_inches="tight")
+    plt.close(fig)
+
+
 def window_corners(center, axes, spacing, bits):
     half = (1 << bits) / 2
     local = np.array([[-half, -half], [half, -half], [half, half], [-half, half], [-half, -half]])
@@ -235,6 +309,10 @@ def generate(shots=100_000):
     multi = [amr8] + [sample_walk(8, amr_center, amr_axes, amr_spacing / 4,
                                    14, shots, 20 + steps, adaptive_steps=steps)
                       for steps in (2, 3, 4)]
+    clt_wasserstein_samples = np.stack([
+        sliced_wasserstein_bootstrap(conditional_standardized_steps(r), 20261116 + i)
+        for i, r in enumerate(multi)
+    ])
     target = ideal_covariance()
     for name, r in runs.items():
         r["analytic"] = exact_unconditional_covariance(r["reg"])
@@ -245,7 +323,7 @@ def generate(shots=100_000):
 
     observed, expected, counts = branch_summary(branch)
     budgets = np.unique(np.geomspace(200, shots, 16).astype(int))
-    err_curve, err_low, err_high = [], [], []
+    covariance_errors = []
     lattice_pred = SCALE2 * torus_cov(branch["hist"], 6) + ISO_VAR * np.eye(D)
     d = branch["disp"]
     residual = np.stack((d[:, 0] ** 2 - lattice_pred[:, 0, 0],
@@ -259,20 +337,20 @@ def generate(shots=100_000):
             mean = residual[bootstrap.integers(shots, size=n)].mean(axis=0)
             errors.append(np.sqrt(mean[0] ** 2 + mean[1] ** 2 + 2 * mean[2] ** 2)
                           / normalizer)
-        lo, mid, hi = np.quantile(errors, [0.1, 0.5, 0.9])
-        err_low.append(lo)
-        err_curve.append(mid)
-        err_high.append(hi)
+        covariance_errors.append(errors)
+    covariance_errors = np.array(covariance_errors)
 
     np.savez_compressed(DATA / "results.npz", observed=observed, expected=expected,
-        counts=counts, budgets=budgets, err_curve=np.array(err_curve),
-        err_low=np.array(err_low), err_high=np.array(err_high),
+        counts=counts, budgets=budgets, covariance_errors=covariance_errors,
+        err_curve=covariance_errors.mean(axis=1),
+        err_std=covariance_errors.std(axis=1, ddof=1),
         pilot_hist=branch["physical_hist"][:500], target=target,
         amr_center=amr_center, amr_axes=amr_axes, amr_spacing=amr_spacing,
         multi_steps=np.arange(1, 5),
         multi_qubits=np.array([r["operational_qubits"] for r in multi]),
         multi_empirical=np.stack([r["empirical"] for r in multi]),
         multi_predicted=np.stack([r["predicted"] for r in multi]),
+        clt_wasserstein_samples=clt_wasserstein_samples,
         **{f"{name}_{key}": r[key] for name, r in runs.items()
            for key in ("qubits", "operational_qubits", "error", "analytic",
                        "empirical", "predicted", "mismatch")})
@@ -280,140 +358,8 @@ def generate(shots=100_000):
 
 
 def plot():
-    z = np.load(DATA / "results.npz")
-    plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10,
-                         "pdf.fonttype": 42, "axes.spines.top": False,
-                         "axes.spines.right": False, "axes.titlesize": 11,
-                         "axes.labelsize": 10})
-
-    def branch_panel(ax, title):
-        for j, (label, color) in enumerate(zip(
-                ("x variance", "y variance", "x–y covariance"),
-                ("#364b8f", "#c45a42", "#176a6d"))):
-            ax.scatter(z["expected"][:, j], z["observed"][:, j], s=17,
-                       alpha=0.68, color=color, label=label)
-        values = np.r_[z["expected"].ravel(), z["observed"].ravel()]
-        lo, hi = values.min(), values.max()
-        pad = max((hi - lo) * 0.07, 0.8)
-        ax.plot([lo - pad, hi + pad], [lo - pad, hi + pad],
-                color="#444444", ls="--", lw=1, label="exact agreement")
-        ax.set(xlim=(lo - pad, hi + pad), ylim=(lo - pad, hi + pad),
-               xlabel="Predicted next-step covariance (grid units²)",
-               ylabel="Covariance of sampled steps (grid units²)", title=title)
-        ax.set_aspect("equal", adjustable="box")
-        ax.grid(alpha=0.16)
-        ax.legend(frameon=False, fontsize=7.5, loc="upper left")
-
-    def sampling_panel(ax, title):
-        ax.fill_between(z["budgets"], 100 * z["err_low"], 100 * z["err_high"],
-                        color="#364b8f", alpha=0.16, label="10th–90th percentile")
-        ax.loglog(z["budgets"], 100 * z["err_curve"], "o-",
-                  color="#364b8f", ms=3.5, label="median")
-        guide = z["err_curve"][0] * np.sqrt(z["budgets"][0] / z["budgets"])
-        ax.loglog(z["budgets"], 100 * guide, ":", color="#777777",
-                  label="1/√samples guide")
-        ax.set(xlabel="Samples from the same circuit", ylabel="Validation error (%)",
-               title=title)
-        ax.grid(alpha=0.16, which="major")
-        ax.legend(frameon=False, fontsize=8)
-
-    def window_panel(ax, title):
-        h = z["pilot_hist"].reshape(-1, D)
-        ax.scatter(h[:, 0], h[:, 1], s=8, alpha=0.17, color="#364b8f",
-                   label="pilot histories")
-        pilot = window_corners(X0, np.eye(D), np.full(D, 0.08 / 64), 6)
-        amr = window_corners(z["amr_center"], z["amr_axes"], z["amr_spacing"], 6)
-        ax.plot(pilot[:, 0], pilot[:, 1], color=COL["pilot6"], lw=2,
-                label="initial window")
-        ax.plot(amr[:, 0], amr[:, 1], color=COL["amr12"], lw=2,
-                label="window chosen from pilot")
-        ax.scatter(*X0, color="#222222", marker="x", s=42, lw=1.5,
-                   label="start")
-        ax.set(xlabel="physical x", ylabel="physical y", title=title)
-        ax.set_aspect("equal", adjustable="box")
-        ax.grid(alpha=0.16)
-        ax.legend(frameon=False, fontsize=7.5, loc="upper left")
-
-    def accuracy_panel(ax, title):
-        order = ("fixed6", "pilot6", "amr6", "amr8", "amr12", "fixed16")
-        labels = ("Full 6b", "Pilot 6b", "AMR 6b", "AMR 8b", "AMR 12b", "Full 16b")
-        for i, name in enumerate(order):
-            percent = 100 * float(z[f"{name}_error"])
-            ax.bar(i, percent, width=0.68, color=COL[name], zorder=2)
-            ax.text(i, percent * 1.2, f"{percent:.3g}%", ha="center",
-                    va="bottom", fontsize=8)
-        qlabels = [f"{label}\n{int(z[f'{name}_operational_qubits'])}q"
-                   for label, name in zip(labels, order)]
-        ax.set_xticks(range(len(order)), qlabels, fontsize=8)
-        ax.set(yscale="log", ylim=(0.09, 350), ylabel="Next-step covariance error (%)",
-               title=title)
-        ax.set_yticks([0.1, 1, 10, 100], ["0.1", "1", "10", "100"])
-        ax.axhline(1, color="#777777", ls=":", lw=1, zorder=1)
-        ax.grid(axis="y", alpha=0.16, which="major")
-
-    def multistep_panel(ax, extract, ylabel, title, legend=True):
-        n = z["multi_steps"]
-        measured = np.array([extract(c) for c in z["multi_empirical"]]) * 1e6
-        predicted = np.array([extract(c) for c in z["multi_predicted"]]) * 1e6
-        ideal = n * extract(z["target"]) * 1e6
-        ax.plot(n, ideal, "--", color="#555555", lw=1.2,
-                label="continuous-grid target")
-        ax.plot(n, predicted, color=COL["amr12"], lw=1.7,
-                label="QCLT prediction")
-        ax.scatter(n, measured, color="#364b8f", s=42, zorder=3,
-                   label="circuit samples")
-        ax.set_xticks(n, [f"{step}\n{q}q" for step, q in zip(n, z["multi_qubits"])])
-        ax.set(xlabel="QCLT kicks in one coherent circuit", ylabel=ylabel,
-               title=title)
-        ax.grid(alpha=0.16)
-        if legend:
-            ax.legend(frameon=False, fontsize=8, loc="upper left")
-
-    fig, axes = plt.subplots(1, 2, figsize=(10.8, 4.1))
-    branch_panel(axes[0], "Each history gives the intended next-step covariance")
-    sampling_panel(axes[1], "Sampling validates the circuit output")
-    fig.suptitle("QCLT: coherent, history-shaped next steps · 29 operational qubits",
-                 fontsize=12, y=0.99)
-    fig.tight_layout(rect=(0, 0, 1, 0.95), w_pad=2.2)
-    fig.savefig(OUT / "qclt_coherent_covariance.pdf", bbox_inches="tight")
-    plt.close(fig)
-
-    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.5),
-                             gridspec_kw={"width_ratios": [1, 1.35]})
-    window_panel(axes[0], "Pilot measurements set the AMR window")
-    accuracy_panel(axes[1], "AMR preserves accuracy with fewer qubits")
-    fig.suptitle("QCLT+AMR: smaller grid spacing where the walk moves",
-                 fontsize=12, y=0.99)
-    fig.tight_layout(rect=(0, 0, 1, 0.95), w_pad=2.0)
-    fig.savefig(OUT / "qclt_amr_grid.pdf", bbox_inches="tight")
-    plt.close(fig)
-
-    fig, axes = plt.subplots(1, 2, figsize=(10.8, 4.1))
-    multistep_panel(axes[0], np.trace, "Total step variance (×10⁻⁶)",
-                    "Motion grows as predicted")
-    multistep_panel(axes[1], lambda a: a[0, 1],
-                    "x–y step covariance (×10⁻⁶)", "Correlation persists", False)
-    fig.suptitle("Repeated coherent QCLT kicks · measured 8-bit AMR window",
-                 fontsize=12, y=0.99)
-    fig.tight_layout(rect=(0, 0, 1, 0.95), w_pad=2.3)
-    fig.savefig(OUT / "qclt_multistep_walk.pdf", bbox_inches="tight")
-    plt.close(fig)
-
-    fig, axes = plt.subplots(2, 2, figsize=(11.8, 8.3))
-    branch_panel(axes[0, 0], "1. History shapes the next step")
-    window_panel(axes[0, 1], "2. Pilot data select the window")
-    accuracy_panel(axes[1, 0], "3. AMR saves qubits at the same accuracy")
-    multistep_panel(axes[1, 1], np.trace, "Total step variance (×10⁻⁶)",
-                    "4. Repeated coherent steps diffuse")
-    fig.suptitle("QCLT + AMR: coherent next steps, compact grids", fontsize=14, y=0.99)
-    fig.text(0.5, 0.012,
-             "Circuits output steps; covariance is computed afterward only for validation.\n"
-             "Ideal circuits sampled classically · AMR updated between circuits · q = logical qubits",
-             ha="center", fontsize=8.2, color="#555555")
-    fig.tight_layout(rect=(0, 0.06, 1, 0.95), h_pad=2.1, w_pad=2.4)
-    fig.savefig(OUT / "qclt_amr_summary.pdf", bbox_inches="tight")
-    plt.close(fig)
-    print("saved four archived quantum-walk diagnostic PDFs in", OUT, flush=True)
+    """Render the convergence figure used in the paper."""
+    plot_clt_convergence()
 
 
 if __name__ == "__main__":

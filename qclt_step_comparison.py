@@ -13,7 +13,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from qiskit import QuantumCircuit, QuantumRegister, StatePreparation
+from matplotlib.patches import Patch
+from qiskit import QuantumCircuit, QuantumRegister
 ROOT = Path(__file__).parent
 OUT = ROOT / "figures" / "quantum_walk"
 DATA = ROOT / "data" / "quantum_walk"
@@ -182,36 +183,43 @@ def generate():
                     np.linalg.norm(step_cov - target, axis=(1, 2)) / np.linalg.norm(target))
     if not np.all(np.isfinite(errors)):
         raise AssertionError("measured-entry comparison contains nonfinite values")
-    quantiles = np.quantile(errors, [.1, .5, .9], axis=2).transpose(1, 2, 0)
-    qclt_quantiles = np.quantile(qclt_errors, [.1, .5, .9])
     np.savez_compressed(DATA / "step_estimator_comparison.npz",
-                        budgets=BUDGETS, quantiles=quantiles, reps=REPS,
-                        branches=64, qubits=qubits, qclt_quantiles=qclt_quantiles)
-    print("Pairwise median error at 384 shots:", quantiles[0, 5, 1], flush=True)
-    print("SWAP median error at 384 shots:", quantiles[1, 5, 1], flush=True)
-    print("QCLT median physical error:", qclt_quantiles[1], flush=True)
+                        budgets=BUDGETS, errors=errors, reps=REPS,
+                        branches=64, qubits=qubits, qclt_errors=qclt_errors)
+    for name, values in (("Pairwise at 384 shots", errors[0, 5]),
+                         ("SWAP at 384 shots", errors[1, 5]),
+                         ("QCLT physical error", qclt_errors)):
+        print(f"{name}: mean {values.mean():.3%}, SD {values.std(ddof=1):.3%}", flush=True)
     plot()
 
 
 def plot():
     data = np.load(DATA / "step_estimator_comparison.npz")
+    if "errors" not in data or "qclt_errors" not in data:
+        raise RuntimeError("Individual covariance errors are missing; rerun qclt_step_comparison.py")
     import paper_style
     paper_style.apply()
     fig, ax = plt.subplots(figsize=(6.4, 4.2))
     for m, (label, color) in enumerate((("Pairwise moments + loader", paper_style.COLORS["MEASURED"]),
                                         ("SWAP overlap + loader", paper_style.COLORS["CLASSICAL"]))):
-        q = 100 * data["quantiles"][m]
-        ax.fill_between(data["budgets"], q[:, 0], q[:, 2], color=color, alpha=.12)
-        ax.plot(data["budgets"], q[:, 1], "o-", ms=3.5, color=color, label=label)
-    qclt = 100 * data["qclt_quantiles"]
-    ax.axhspan(qclt[0], qclt[2], color=paper_style.COLORS["QCLT"], alpha=.12)
-    ax.axhline(qclt[1], color=paper_style.COLORS["QCLT"], lw=1.5,
+        values = 100 * data["errors"][m]
+        mean = values.mean(axis=1)
+        sd = values.std(axis=1, ddof=1)
+        ax.fill_between(data["budgets"], mean - sd, mean + sd, color=color, alpha=.12)
+        ax.plot(data["budgets"], mean, "o-", ms=3.5, color=color, label=label)
+    qclt = 100 * data["qclt_errors"]
+    qclt_mean, qclt_sd = qclt.mean(), qclt.std(ddof=1)
+    ax.axhspan(qclt_mean - qclt_sd, qclt_mean + qclt_sd,
+               color=paper_style.COLORS["QCLT"], alpha=.12)
+    ax.axhline(qclt_mean, color=paper_style.COLORS["QCLT"], lw=1.5,
                label="QCLT direct step")
     ax.set(xscale="log", xlabel="Intermediate covariance-measurement shots",
            ylabel=r"Next-step covariance error (\%)")
-    ax.grid(color=paper_style.GRID, lw=.6)
-    ax.set_axisbelow(True)
-    ax.legend(frameon=False, ncol=1)
+    handles, labels = ax.get_legend_handles_labels()
+    handles.append(Patch(facecolor=paper_style.MUTED, alpha=.18,
+                         label=r"Mean $\pm$ 1 SD"))
+    labels.append(r"Mean $\pm$ 1 SD")
+    paper_style.legend_below(ax, handles, labels, ncol=2)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     fig.tight_layout()
