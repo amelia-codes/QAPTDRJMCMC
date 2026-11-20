@@ -11,7 +11,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Ellipse
 
 ROOT = Path(__file__).parent
@@ -91,7 +90,9 @@ def run():
     rng = np.random.default_rng(20261114)
     names = []
     baseline = []
-    curves = []
+    all_errors = []
+    error_mean = []
+    error_std = []
     failure = []
     win_rate = []
     heldout_mismatch = []
@@ -117,14 +118,16 @@ def run():
 
         # Independent pilot subsets: the published workflow chooses the AMR
         # window from final measurements, then builds a separate coherent walk.
-        case_curves = []
+        case_errors = np.full((len(BUDGETS), REPS), np.nan)
+        case_means = []
+        case_stds = []
         case_failures = []
         case_win_rates = []
-        for budget in BUDGETS:
+        for budget_index, budget in enumerate(BUDGETS):
             errs = []
             bad = 0
             wins = 0
-            for _ in range(REPS):
+            for replicate in range(REPS):
                 subset = pool[rng.choice(PILOT_POOL, size=int(budget), replace=False)]
                 center, axes, spacing = window_from_pilot(subset)
                 if not window_safe(modes, center, axes, spacing, histories):
@@ -132,13 +135,15 @@ def run():
                 else:
                     error = relative_error(modes, center, axes, spacing)
                     errs.append(error)
+                    case_errors[budget_index, replicate] = error
                     wins += error < local_error
             case_failures.append(bad / REPS)
             case_win_rates.append(wins / REPS)
-            case_curves.append(np.quantile(errs, [0.1, 0.5, 0.9])
-                               if errs else [np.nan] * 3)
-        case_curves = np.array(case_curves)
-        curves.append(case_curves)
+            case_means.append(np.mean(errs) if errs else np.nan)
+            case_stds.append(np.std(errs, ddof=1) if len(errs) > 1 else np.nan)
+        all_errors.append(case_errors)
+        error_mean.append(case_means)
+        error_std.append(case_stds)
         failure.append(case_failures)
         win_rate.append(case_win_rates)
         baseline.append([global_error, local_error, oracle_error])
@@ -152,13 +157,14 @@ def run():
                               400 + case_index, modes_physical=modes)
         heldout_mismatch.append(heldout["mismatch"])
         print(f"{name:12s} global {global_error:.3%}, local {local_error:.3%}, "
-              f"AMR median {case_curves[-1, 1]:.3%}, "
+              f"AMR mean {case_means[-1]:.3%}, SD {case_stds[-1]:.3%}, "
               f"population-geometry {oracle_error:.3%}, "
               f"pilot failure at 8 shots {case_failures[0]:.1%}, "
               f"held-out law error {heldout['mismatch']:.2%}", flush=True)
 
     z = dict(names=np.array(names), budgets=BUDGETS, baseline=np.array(baseline),
-             curves=np.array(curves), failure=np.array(failure),
+             errors=np.array(all_errors), error_mean=np.array(error_mean),
+             error_std=np.array(error_std), failure=np.array(failure),
              win_rate=np.array(win_rate),
              heldout_mismatch=np.array(heldout_mismatch),
              reps=REPS, pilot_pool=PILOT_POOL)
@@ -171,44 +177,49 @@ def plot(z=None):
         z = np.load(DATA / "amr_battle_test.npz")
     names = z["names"].tolist()
     baseline = z["baseline"]
-    curves = z["curves"]
     win_rate = z["win_rate"]
     budgets = z["budgets"]
     import paper_style
     paper_style.apply()
-    fig, ax = plt.subplots(figsize=(7.4, 4.4))
+
+    if "error_mean" not in z or "error_std" not in z:
+        raise ValueError("Saved AMR results lack mean/SD summaries; rerun amr_battle_test.py")
+    budget_index = int(np.flatnonzero(budgets == 1000)[0])
+    if np.any(z["failure"][:, budget_index] > 0):
+        raise ValueError("The AMR comparison includes unsafe windows")
+
+    fig, ax = plt.subplots(figsize=(9.8, 4.8))
     x = np.arange(len(names))
-    width = 0.24
-    methods = [
-        ("Full-range grid", baseline[:, 0], paper_style.COLORS["FIXED"]),
-        ("Local grid", baseline[:, 1], paper_style.COLORS["ZOOM_IN"]),
-        ("AMR grid", curves[:, -1, 1], paper_style.COLORS["QCLT_AMR"]),
+    width = .24
+    series = [
+        ("Full-range grid", baseline[:, 0] * 100, None, paper_style.COLORS["FIXED"]),
+        ("Informed local grid", baseline[:, 1] * 100, None, paper_style.COLORS["ZOOM_IN"]),
+        ("AMR grid", z["error_mean"][:, budget_index] * 100,
+         z["error_std"][:, budget_index] * 100, paper_style.COLORS["QCLT_AMR"]),
     ]
-    for j, (label, err, color) in enumerate(methods):
-        ax.bar(x + (j - 1) * width, 100 * err, width,
-               label=label, color=color)
-    lower = 100 * (curves[:, -1, 1] - curves[:, -1, 0])
-    upper = 100 * (curves[:, -1, 2] - curves[:, -1, 1])
-    ax.errorbar(x + width, 100 * curves[:, -1, 1],
-                yerr=np.stack((lower, upper)), fmt="none", ecolor=paper_style.INK,
-                capsize=2, lw=1)
-    ax.set(yscale="log", ylabel=r"Next-step covariance error (\%)")
+    offsets = (np.arange(len(series)) - (len(series) - 1) / 2) * width
+    for offset, (label, mean, sd, color) in zip(offsets, series):
+        kwargs = {}
+        if sd is not None:
+            kwargs = dict(yerr=sd, capsize=2.5,
+                          error_kw={"ecolor": paper_style.INK, "elinewidth": 1.0})
+        ax.bar(x + offset, mean, width=width * .92, color=color,
+               edgecolor=color, linewidth=.7, alpha=paper_style.BAR_ALPHA, label=label,
+               zorder=2, **kwargs)
     ax.set_xticks(x, [n.replace("-", "\n") for n in names])
-    ax.grid(axis="y", color=paper_style.GRID, lw=.6)
-    ax.set_axisbelow(True)
-    handles, labels = ax.get_legend_handles_labels()
-    handles.append(Line2D([0], [0], color=paper_style.INK, lw=1,
-                          label="10th--90th percentile (up to 80 windows)"))
-    labels.append("10th--90th percentile (up to 80 windows)")
-    ax.legend(handles, labels, frameon=False, ncol=2, loc="lower center",
-              bbox_to_anchor=(0.5, 1.01))
-    fig.tight_layout(rect=(0, 0, 1, 0.90))
+    ax.set_xlabel("Walk distribution")
+    ax.set_ylabel(r"Covariance error (\%; mean $\pm$ 1 SD, $n=80$)")
+    ax.set_yscale("log")
+    paper_style.legend_below(ax, ncol=3)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    fig.tight_layout(rect=(.08, 0, 1, 1))
     fig.savefig(OUT / "qclt_amr_covariance_error.pdf", bbox_inches="tight")
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(5.8, 4.4))
     image = ax.imshow(100 * win_rate, aspect="auto", origin="lower",
-                      cmap="Greens", vmin=0, vmax=100)
+                      cmap=paper_style.AMR_CMAP, vmin=0, vmax=100)
     ax.set_xticks(np.arange(len(budgets)), [str(n) for n in budgets],
                   rotation=45, ha="right")
     ax.set_yticks(np.arange(len(names)), names)
@@ -240,11 +251,9 @@ def plot(z=None):
                                  fill=False, edgecolor=color, linewidth=1.25,
                                  linestyle=ls, alpha=alpha,
                                  label=label if scale == 1.0 else None))
-    ax.axhline(0, color=paper_style.GRID, lw=.6, zorder=0)
-    ax.axvline(0, color=paper_style.GRID, lw=.6, zorder=0)
     ax.set(xlim=(-2.0, 2.0), ylim=(-2.0, 2.0),
            xlabel="Parameter 1", ylabel="Parameter 2", aspect="equal")
-    ax.legend(frameon=False, loc="upper right")
+    paper_style.legend_below(ax, ncol=2)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     fig.tight_layout()

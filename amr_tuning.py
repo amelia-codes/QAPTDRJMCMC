@@ -1,160 +1,158 @@
-"""Refinement criteria and step-size sensitivity for AMR register grids.
+"""Compare AMR window widths and grid axes across QCLT walk distributions.
 
-The walks are classical simulations of the register-grid algorithm. The study
-varies the re-grid interval, the edge-occupancy threshold for forced widening,
-the maximum width change per update, and the fraction of the measured mean
-shift used to pan the window.
+Every setting receives the same 1,000 measured histories in each repetition.
+The final coherent walk has two 8-bit position registers (33 working qubits).
+Errors compare its exact next-step covariance with the continuous target;
+error bars show one sample standard deviation across 80 window selections.
+
+Run once with: python3.12 amr_tuning.py
+Redraw saved results with: python3.12 amr_tuning.py --plot-only
 """
 
-import itertools
-import pickle
-import time
 from pathlib import Path
+import sys
 
-import numpy as np
+import matplotlib
+matplotlib.use("Agg")
 from matplotlib import pyplot as plt
-import matplotlib.patheffects as path_effects
+import numpy as np
 
-import adaptive_grid as A
+import amr_battle_test as study
 import paper_style
 
-ROOT = Path(__file__).parent
+ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "figures" / "quantum_walk"
-DATA = ROOT / "data" / "quantum_walk"
-REGRID_BLOCKS = (1, 2, 4, 8)
-EDGE_THRESHOLDS = (0.05, 0.20, 0.40)
-ZOOM_LIMITS = (1.5, 2.0, 4.0)
-PAN_FRACTIONS = (0.25, 0.5, 1.0)
-SEEDS = range(6)
+DATA = ROOT / "data" / "quantum_walk" / "amr_tuning.npz"
+HISTORY_SAMPLES = 1000
+REPS = 80
+WIDTH_FACTORS = np.array([1., 1.5, 2.])
+METHOD_LABELS = ("Axis-aligned", "Rotated square", "Rotated rectangular")
 
 
-def score(case, samples):
-    if case == "narrow":
-        mu, sd = A.truth("narrow")
-        x = samples[len(samples) // 2:]
-        return float(np.max(np.abs((x - mu).mean(0) / sd)))
-    x = samples[len(samples) // 2:]
-    return float((np.linalg.norm(x - A.DECOY.comps[0][1], axis=1) < 0.06).mean())
+def refinement_frames(histories):
+    """Return three widths and three axis choices for a common history sample.
+
+    The default window is 16 measured standard deviations wide along each
+    principal axis. Width factors give 16, 24, and 32 standard deviations.
+    The rotated square uses the largest principal spread for both widths.
+    """
+    center, axes, spacing = study.window_from_pilot(histories)
+    width_frames = [(center, axes, factor * spacing) for factor in WIDTH_FACTORS]
+    pooled = histories.reshape(-1, study.D)
+    axis_spacing = np.maximum(pooled.std(axis=0, ddof=1) / 4, 1e-6)
+    axis_spacing /= 1 << (study.BITS - study.PILOT_BITS)
+    method_frames = [
+        (center, np.eye(study.D), axis_spacing),
+        (center, axes, np.full(study.D, spacing.max())),
+        (center, axes, spacing),
+    ]
+    return width_frames, method_frames
 
 
-def parameter_settings():
-    settings = {(period, 0.20, 2.0, 1.0) for period in REGRID_BLOCKS}
-    settings.update((1, edge, 2.0, 1.0) for edge in EDGE_THRESHOLDS)
-    settings.update((1, 0.20, zoom, pan)
-                    for zoom, pan in itertools.product(ZOOM_LIMITS, PAN_FRACTIONS))
-    return sorted(settings)
+def _score_frames(modes, histories, frames):
+    scores = []
+    for center, axes, spacing in frames:
+        if not study.window_safe(modes, center, axes, spacing, histories):
+            raise ValueError("AMR setting does not cover the preparatory walk; no trials were discarded")
+        scores.append(study.relative_error(modes, center, axes, spacing))
+    return scores
 
 
 def run():
-    DATA.mkdir(parents=True, exist_ok=True)
-    rows = []
-    for case in ("narrow", "decoy"):
-        cfg = A.CONFIGS[case]
-        x0 = np.asarray(cfg["x0"])
-        problem = A.make_problem(case)
-        for seed in SEEDS:
-            samples, _, _, _ = A.walk(problem, "fixed", cfg["n_bits"], cfg["n_steps"],
-                                       cfg["block"], cfg["K"], seed, x0)
-            rows.append(dict(case=case, strategy="fixed", seed=seed, score=score(case, samples),
-                             regrid=1, edge=0.20, zoom=1.0, pan=0.0, cpu_per_step=np.nan))
-        for regrid, edge, zoom, pan in parameter_settings():
-            for seed in SEEDS:
-                t0 = time.process_time()
-                samples, _, _, _ = A.walk(
-                    problem, "restart", cfg["n_bits"], cfg["n_steps"], cfg["block"],
-                    cfg["K"], seed, x0, zoom_factor=zoom, pan_fraction=pan,
-                    regrid_blocks=regrid, edge_threshold=edge)
-                elapsed = time.process_time() - t0
-                rows.append(dict(case=case, strategy="restart", seed=seed, score=score(case, samples),
-                                 regrid=regrid, edge=edge, zoom=zoom, pan=pan,
-                                 cpu_per_step=elapsed / cfg["n_steps"]))
-    with open(DATA / "amr_tuning.pkl", "wb") as f:
-        pickle.dump(rows, f)
-    plot(rows)
+    from quantum_walk_study import sample_walk
+
+    rng = np.random.default_rng(20261114)
+    width_errors = np.empty((len(study.CASES), len(WIDTH_FACTORS), REPS))
+    method_errors = np.empty((len(study.CASES), len(METHOD_LABELS), REPS))
+    heldout_mismatch = np.empty((len(study.CASES), 2))
+    for case_index, (name, modes, pilot_width) in enumerate(study.CASES):
+        pilot = sample_walk(
+            study.PILOT_BITS, study.X0, np.eye(study.D),
+            np.full(study.D, pilot_width / (1 << study.PILOT_BITS)),
+            8, study.PILOT_POOL, 300 + case_index, modes_physical=modes)
+        pool = pilot["physical_hist"]
+        histories = study.all_true_histories(modes)
+        # Replay the stress test's draws so its AMR bar and this study's
+        # default refinement use precisely the same 80 measurement subsets.
+        subsets = []
+        for budget in study.BUDGETS:
+            for _ in range(REPS):
+                indices = rng.choice(len(pool), int(budget), replace=False)
+                if budget == HISTORY_SAMPLES:
+                    subsets.append(pool[indices])
+        if len(subsets) != REPS:
+            raise ValueError("History sample count is missing from the AMR stress test")
+        for replicate, subset in enumerate(subsets):
+            widths, methods = refinement_frames(subset)
+            width_errors[case_index, :, replicate] = _score_frames(modes, histories, widths)
+            method_errors[case_index, :, replicate] = _score_frames(modes, histories, methods)
+
+        # Check the widest window and the alternative square window against
+        # measured coherent circuits, separately from the analytic scoring.
+        widths, methods = refinement_frames(pool[:HISTORY_SAMPLES])
+        for j, (center, axes, spacing) in enumerate((widths[-1], methods[1])):
+            measured = sample_walk(
+                study.BITS, center, axes, spacing, 14, 30_000,
+                1100 + 2 * case_index + j, modes_physical=modes)
+            heldout_mismatch[case_index, j] = measured["mismatch"]
+            if measured["operational_qubits"] != 33:
+                raise AssertionError("AMR settings changed the final walk's qubit count")
+        print(f"{name}: mean errors for widths 16/24/32 SD: "
+              + ", ".join(f"{value:.2%}" for value in width_errors[case_index].mean(axis=1)),
+              flush=True)
+
+    # The 16-SD width and rotated rectangular method are the same algorithm.
+    np.testing.assert_array_equal(width_errors[:, 0], method_errors[:, 2])
+    DATA.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        DATA, names=np.array([case[0] for case in study.CASES]),
+        width_factors=WIDTH_FACTORS, widths_in_sd=16 * WIDTH_FACTORS,
+        method_labels=np.array(METHOD_LABELS), width_errors=width_errors,
+        method_errors=method_errors, history_samples=HISTORY_SAMPLES,
+        reps=REPS, register_bits=study.BITS, qubits=33,
+        heldout_mismatch=heldout_mismatch)
+    plot()
 
 
-def values(rows, case, **params):
-    return np.asarray([r["score"] for r in rows if r["case"] == case and r["strategy"] == "restart"
-                       and all(r[k] == v for k, v in params.items())])
-
-
-def add_interval_plot(rows, case):
-    fig, ax = plt.subplots(figsize=(5.4, 4.0))
-    med, lo, hi = [], [], []
-    for n in REGRID_BLOCKS:
-        v = values(rows, case, regrid=n, edge=0.20, zoom=2.0, pan=1.0)
-        med.append(np.median(v)); lo.append(np.percentile(v, 25)); hi.append(np.percentile(v, 75))
-    x = np.array(REGRID_BLOCKS) * A.CONFIGS[case]["block"]
-    ax.plot(x, med, "o-", color=paper_style.COLORS["QCLT_AMR"], lw=1.25, ms=4, label="AMR")
-    ax.fill_between(x, lo, hi, color=paper_style.COLORS["QCLT_AMR"], alpha=.15, lw=0)
-    base = [r["score"] for r in rows if r["case"] == case and r["strategy"] == "fixed"]
-    ax.axhline(np.median(base), color=paper_style.MUTED, ls="--", lw=.85, label="Fixed grid")
-    ax.set_xscale("log", base=2)
-    ax.set_xticks(x, [str(v) for v in x])
-    ax.set_xlabel("Re-grid interval (walk steps)")
-    ax.set_ylabel("Time in target peak" if case == "decoy" else "Mean error (true spreads)")
-    ax.grid(color=paper_style.GRID, lw=.6); ax.set_axisbelow(True)
-    ax.legend(frameon=False)
-    for side in ("top", "right"): ax.spines[side].set_visible(False)
+def _grouped_errors(names, errors, labels, filename, *, colors=None):
+    fig, ax = plt.subplots(figsize=(9.8, 4.6))
+    x = np.arange(len(names))
+    width = .24
+    if colors is None:
+        colors = paper_style.COMPARISON_COLORS
+    mean = 100 * errors.mean(axis=2)
+    sd = 100 * errors.std(axis=2, ddof=1)
+    for j, (label, color) in enumerate(zip(labels, colors)):
+        ax.bar(x + (j - 1) * width, mean[:, j], width * .92,
+               yerr=sd[:, j], capsize=2.5, color=color, edgecolor=color,
+               linewidth=.7, alpha=paper_style.BAR_ALPHA, label=label,
+               error_kw={"ecolor": paper_style.INK, "elinewidth": 1.0})
+    ax.set_xticks(x, [name.replace("-", "\n") for name in names])
+    ax.set_xlabel("Walk distribution")
+    ax.set_ylabel(r"Covariance error (\%; mean $\pm$ 1 SD)")
+    ax.set_ylim(bottom=0)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    paper_style.legend_below(ax, ncol=3)
     fig.tight_layout()
-    fig.savefig(OUT / f"amr_regrid_interval_{case}.pdf", bbox_inches="tight")
+    OUT.mkdir(parents=True, exist_ok=True)
+    fig.savefig(OUT / filename, bbox_inches="tight")
     plt.close(fig)
 
 
-def add_edge_plot(rows, case):
-    fig, ax = plt.subplots(figsize=(5.4, 4.0))
-    med, lo, hi = [], [], []
-    for edge in EDGE_THRESHOLDS:
-        v = values(rows, case, regrid=1, edge=edge, zoom=2.0, pan=1.0)
-        med.append(np.median(v)); lo.append(np.percentile(v, 25)); hi.append(np.percentile(v, 75))
-    ax.plot(np.array(EDGE_THRESHOLDS) * 100, med, "o-", color=paper_style.COLORS["QCLT_AMR"],
-            lw=1.25, ms=4)
-    ax.fill_between(np.array(EDGE_THRESHOLDS) * 100, lo, hi,
-                    color=paper_style.COLORS["QCLT_AMR"], alpha=.15, lw=0)
-    ax.set_xlabel(r"Edge occupancy threshold (\%)")
-    ax.set_ylabel("Time in target peak" if case == "decoy" else "Mean error (true spreads)")
-    ax.grid(color=paper_style.GRID, lw=.6); ax.set_axisbelow(True)
-    for side in ("top", "right"): ax.spines[side].set_visible(False)
-    fig.tight_layout()
-    fig.savefig(OUT / f"amr_edge_threshold_{case}.pdf", bbox_inches="tight")
-    plt.close(fig)
-
-
-def add_zoom_pan_plot(rows, case):
-    fig, ax = plt.subplots(figsize=(5.0, 4.0))
-    matrix = np.array([[np.median(values(rows, case, regrid=1, edge=0.20, zoom=z, pan=p))
-                        for p in PAN_FRACTIONS] for z in ZOOM_LIMITS])
-    im = ax.imshow(matrix, aspect="auto", cmap="Greens")
-    ax.set_xticks(range(len(PAN_FRACTIONS)), [f"{p:g}" for p in PAN_FRACTIONS])
-    ax.set_yticks(range(len(ZOOM_LIMITS)), [f"{z:g}x" for z in ZOOM_LIMITS])
-    ax.set_xlabel("Pan fraction")
-    ax.set_ylabel("Maximum width change per re-grid")
-    for i in range(len(ZOOM_LIMITS)):
-        for j in range(len(PAN_FRACTIONS)):
-            ax.text(j, i, f"{matrix[i, j]:.2f}", ha="center", va="center", color="white",
-                    path_effects=[path_effects.withStroke(linewidth=1.2, foreground="black")])
-    cb = fig.colorbar(im, ax=ax, fraction=.055, pad=.04)
-    cb.set_label("Target peak occupancy" if case == "decoy" else "Mean error (true spreads)")
-    fig.tight_layout()
-    fig.savefig(OUT / f"amr_zoom_pan_{case}.pdf", bbox_inches="tight")
-    plt.close(fig)
-
-
-def plot(rows):
+def plot():
     paper_style.apply()
-    for case in ("decoy", "narrow"):
-        add_interval_plot(rows, case)
-        add_edge_plot(rows, case)
-        add_zoom_pan_plot(rows, case)
-    print("saved six AMR refinement-parameter figures")
-    times = [r["cpu_per_step"] for r in rows if r["strategy"] == "restart"]
-    print(f"AMR simulator CPU time: median {1e6*np.median(times):.2f} microseconds per proposal")
+    with np.load(DATA, allow_pickle=False) as saved:
+        names = saved["names"].tolist()
+        _grouped_errors(
+            names, saved["width_errors"],
+            [rf"Window width $= {width:g}\sigma_j$" for width in saved["widths_in_sd"]],
+            "amr_zoom_limit.pdf")
+        _grouped_errors(names, saved["method_errors"], saved["method_labels"].tolist(),
+                        "amr_methods.pdf", colors=(paper_style.COLORS["QCLT"],
+                                                   paper_style.COLORS["MEASURED"],
+                                                   paper_style.COLORS["QCLT_AMR"]))
 
 
 if __name__ == "__main__":
-    import sys
-    if "--plot-only" in sys.argv:
-        with open(DATA / "amr_tuning.pkl", "rb") as f:
-            plot(pickle.load(f))
-    else:
-        run()
+    plot() if "--plot-only" in sys.argv else run()

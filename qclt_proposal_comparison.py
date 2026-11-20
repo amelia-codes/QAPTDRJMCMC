@@ -1,15 +1,8 @@
-"""QCLT + AMR against covariance-based random-walk proposals from the literature and against naive approximations.
+"""Compare covariance estimators and history-shaped proposal methods.
 
-Two questions, three figures (figures/quantum_walk/):
-
-  qclt_vs_covariance_methods.pdf -- How accurate is the next-step covariance? The 2-D coherent-walk toy of
-      quantum_walk_study.py (three preparatory steps along known modes, 64 history branches), every method scored
-      against the same continuous conditional target 2.38^2/d * S_history, as in qclt_step_comparison.py.
-  qclt_proposal_efficiency_d{2,5}.pdf --
-      One plot per dimension. Methods propose from K stored states drawn from correlated Gaussian
-      posteriors (d = 2: the toy geometry; d = 5: condition number 100), inside Metropolis chains. Score: jump
-      distance along the worst-explored direction per likelihood evaluation, normalized to QCLT full + AMR
-      at the same stored-history size K (so QCLT full + AMR = 1 at every K).
+The paper-ready covariance-error plot and full LaTeX table use a two-dimensional
+coherent-walk toy with three preparatory steps and 64 history branches. The
+additional stored-history Metropolis analysis remains available through run().
 
 Methods
   classical, from the literature
@@ -37,14 +30,14 @@ Every chain also uses the Roberts & Rosenthal (2009) safety component: with prob
 of variance 0.1^2/d times the mean posterior variance. Nothing here runs on quantum hardware, and nothing here
 is a quantum speedup: every QCLT law is sampled exactly by a classical pair-difference sampler.
 
-Run:   python3.12 qclt_proposal_comparison.py             # ~5 min
+Run:   python3.12 qclt_proposal_comparison.py --covariance-only
+       python3.12 qclt_proposal_comparison.py --table-only
        python3.12 qclt_proposal_comparison.py --plot-only
 """
 import itertools
 import math
 import sys
 from pathlib import Path
-from matplotlib.colors import to_rgba
 
 import numpy as np
 
@@ -164,6 +157,9 @@ def frame_history(signs, center, axes, spacing):
 
 def toy_errors(rng, n_pilots=40, pilot_size=1000):
     """Relative Frobenius error of each method's next-step covariance, per branch (and per pilot for AMR)."""
+    from quantum_walk_study import sample_walk
+    from amr_battle_test import window_from_pilot
+
     sd2 = SCALE2_TOY
     local = (X0, np.eye(D_TOY), np.full(D_TOY, 0.08 / 256))         # informed local 8-bit grid of the study
     pilot = sample_walk(6, X0, np.eye(D_TOY), np.full(D_TOY, 0.08 / 64), 8, 20_000, 11)["physical_hist"]
@@ -429,172 +425,133 @@ def resource_rows():
             ("Gaussian loader (KW shear)", 31, 1, "step, C given", "-")]
 
 
+def write_covariance_table(errs, b_shots=B_SHOTS):
+    """Write every covariance-error result to the table included by the paper."""
+    rows = [
+        ("QCLT + AMR, 8-bit grid", "QCLT + AMR, 8-bit", 2560),
+        ("QCLT, informed local 8-bit grid", "QCLT, local 8-bit", 64),
+        ("Single history-pair difference (DE-MCz)", "single-pair kick (DE-MCz), local 8-bit", 64),
+        ("AMR-window covariance only", "window-only kick, pilot covariance", 2560),
+        ("Diagonal covariance", "diagonal-only kick, local 8-bit", 64),
+        ("Uncentred second moment, fixed grid", "zero-mean kick, local 8-bit", 64),
+        ("Uncentred second moment, AMR grid", "zero-mean kick, AMR window", 2560),
+        (f"Amplitude estimation ({b_shots} queries) + ideal loader",
+         f"amplitude estimation ({b_shots} queries) + loader", 64 * 50),
+        (f"SWAP overlap ({b_shots} shots) + ideal loader",
+         f"SWAP test ({b_shots} shots) + loader", 64 * 50),
+        (f"Pairwise moments ({b_shots} shots) + ideal loader",
+         f"pairwise moments ({b_shots} shots) + loader", 64 * 50),
+        ("Maximum-correlation bound", "max bound (all rho = +1)", 64),
+        ("Minimum-correlation bound", "min bound (all rho = -1)", 64),
+        ("Isotropic covariance", "isotropic step (scale given)", 64),
+    ]
+    lines = [
+        r"\begin{tabular}{@{}p{0.48\textwidth}r r p{0.20\textwidth}@{}}",
+        r"\toprule",
+        r"Method & $N$ & Mean error (\%) & Standard deviation (\%) \\",
+        r"\midrule",
+    ]
+    for label, key, n in rows:
+        values = 100 * np.asarray(errs[key])
+        mean, sd = values.mean(), values.std(ddof=1)
+        lines.append(f"{label} & {n:,} & {mean:.2f} & {sd:.2f} " + r"\\")
+    lines.extend([
+        r"Classical AM / DE-MCz, exact history & 64 & 0 (exact) & 0 \\",
+        r"\bottomrule",
+        r"\end{tabular}",
+    ])
+    path = ROOT / "paper" / "figures" / "covariance_method_errors.tex"
+    path.write_text("\n".join(lines) + "\n")
+
+
+def save_covariance_errors(errs, b_shots=B_SHOTS):
+    """Keep individual error values so plot-only can compute the actual SD."""
+    DATA.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(DATA / "covariance_errors.npz", b_shots=b_shots, **errs)
+
+
+def load_covariance_errors():
+    path = DATA / "covariance_errors.npz"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Individual covariance errors are missing: {path}. "
+            "Run qclt_proposal_comparison.py --covariance-only once."
+        )
+    with np.load(path, allow_pickle=False) as saved:
+        b_shots = int(saved["b_shots"])
+        errs = {key: saved[key] for key in saved.files if key != "b_shots"}
+    for key, values in errs.items():
+        if values.ndim != 1 or len(values) < 2 or not np.all(np.isfinite(values)):
+            raise ValueError(f"Invalid individual covariance errors for {key}")
+    return errs, b_shots
+
+
 def plot():
-    """Paper-style plots; explanatory assumptions live in the README/captions."""
-    import pickle
+    """Plot mean covariance errors with one sample standard deviation (ddof=1).
+
+    Compute both statistics from individual errors rather than rounded table
+    entries.
+    """
     import matplotlib
     matplotlib.use("Agg")
     from matplotlib import pyplot as plt
+    from matplotlib.lines import Line2D
     import paper_style
 
-    with open(DATA / "proposal_comparison.pkl", "rb") as f:
-        z = pickle.load(f)
-    paper_style.apply()
-    plt.rcParams.update({
-        #"font.family": "DejaVu Serif",
-        "mathtext.fontset": "stix",
-        "text.usetex": False,
-        "axes.labelsize": 9,
-        "xtick.labelsize": 8,
-        "ytick.labelsize": 8,
-        "pdf.fonttype": 42,
-    })
-    errs = z["errs"]
-    # Normalize covariance-error comparisons by the median QCLT + AMR error.
-    # Thus QCLT + AMR is the unit reference in this figure as well.
-    covariance_reference = float(np.median(errs["QCLT + AMR, 8-bit"]))
-    if not np.isfinite(covariance_reference) or covariance_reference <= 0:
+    errs, b_shots = load_covariance_errors()
+    reference = float(np.mean(errs["QCLT + AMR, 8-bit"]))
+    if not np.isfinite(reference) or reference <= 0:
         raise RuntimeError("QCLT + AMR covariance reference is invalid")
-    normalized_errs = {key: np.asarray(values) / covariance_reference
-                       for key, values in errs.items()}
+    paper_style.apply()
     groups = [
-        ("QCLT", paper_style.COLORS["QCLT_AMR"], [
-            ("QCLT + AMR, 8-bit", "QCLT + AMR, 8-bit"), ("QCLT, local 8-bit", "QCLT, fixed local grid")]),
-        ("Readout", paper_style.COLORS["MEASURED"], [
-            (f"amplitude estimation ({z['b_shots']} queries) + loader", "Amplitude estimation"),
-            (f"SWAP test ({z['b_shots']} shots) + loader", "SWAP test"),
-            (f"pairwise moments ({z['b_shots']} shots) + loader", "Pairwise moments")]),
-        ("Approximations", paper_style.COLORS["BASELINE"], [
+        (paper_style.COLORS["QCLT_AMR"], [
+            ("QCLT + AMR, 8-bit", "QCLT + AMR, 8-bit"),
+            ("QCLT, local 8-bit", "QCLT, fixed local grid")]),
+        (paper_style.COLORS["MEASURED"], [
+            (f"amplitude estimation ({b_shots} queries) + loader", "Amplitude estimation"),
+            (f"SWAP test ({b_shots} shots) + loader", "SWAP test"),
+            (f"pairwise moments ({b_shots} shots) + loader", "Pairwise moments")]),
+        (paper_style.COLORS["BASELINE"], [
             ("max bound (all rho = +1)", "Maximum correlation bound"),
-
             ("isotropic step (scale given)", "Isotropic covariance")]),
     ]
-    fig, ax = plt.subplots(figsize=(6, 3.5))              # covariance comparison only
-    fig.patch.set_facecolor("white")
-    # ax.set_facecolor("white")
-    yt, labels, y = [], [], 0
-    group_boundaries = []
-    for group_index, (_, color, items) in enumerate(groups):
+    fig, ax = plt.subplots(figsize=(7.0, 4.2))
+    positions = []
+    y = 0
+    for group_color, items in groups:
         for key, label in items:
-            lo, med, hi = np.quantile(normalized_errs[key], [.25, .5, .75])
-            bar_color = (paper_style.COLORS["QCLT_AMR"] if key.startswith("QCLT + AMR") else
-                         paper_style.COLORS["QCLT"] if key.startswith("QCLT,") else
-                         paper_style.COLORS["SWAP"] if key.startswith("SWAP test") else
-                         paper_style.COLORS["PAIRWISE"] if key.startswith("pairwise moments") else color)
-            bar_edgecolor = bar_color + "FF"
-            ax.barh(
-                y, med,
-                height=.68,
-                color=to_rgba(bar_color, 0.42),
-                edgecolor=bar_color,
-                linewidth=.8,
-                zorder=2
-            )
-            # 10th--90th percentile range, with a clear median marker.
-            ax.errorbar(med, y, xerr=[[med - lo], [hi - med]], fmt="o",
-                        markersize=2.8, markerfacecolor="white",
+            values = errs[key] / reference
+            mean = float(np.mean(values))
+            sd = float(np.std(values, ddof=1))
+            color = (paper_style.COLORS["QCLT_AMR"] if key.startswith("QCLT + AMR") else
+                     paper_style.COLORS["QCLT"] if key.startswith("QCLT,") else group_color)
+            ax.barh(y, mean, height=.68, color=color, alpha=paper_style.BAR_ALPHA,
+                    edgecolor=color, linewidth=.8, zorder=2)
+            ax.errorbar(mean, y + .18, xerr=sd, fmt="o",
+                        markersize=3.0, markerfacecolor="white",
                         markeredgecolor=paper_style.INK, markeredgewidth=.8,
-                        ecolor=paper_style.INK, elinewidth=.9, capsize=2.2,
-                        zorder=4)
-            ax.text(
-                0.12,
-                y,
-                label,
-                ha="left",
-                va="center",
-                fontsize=7,
-                color="black",
-                zorder=5
-            )
-
-            yt.append(y)
+                        ecolor=paper_style.INK, elinewidth=.9, capsize=2.5, zorder=4)
+            ax.text(.12, y - .15, label, ha="left", va="center", fontsize=11,
+                    color=paper_style.INK, zorder=5)
+            positions.append(y)
             y += 1
-        if group_index < len(groups) - 1:
-            group_boundaries.append(y - .5)
-
-    for boundary in group_boundaries:
-        ax.axhline(boundary, color=paper_style.GRID, lw=.8, zorder=1)
-    ax.set_yticks(yt, labels)
-    ax.tick_params(axis="y", length=0, pad=7)
+    ax.set_yticks(positions, [""] * len(positions))
+    ax.tick_params(axis="y", length=0)
     ax.tick_params(axis="x", direction="out", length=3, color=paper_style.INK)
-    ax.set_ylim(y - 0.5, -0.5)                               # inverted axis, trimmed padding
+    ax.set_ylim(y - .5, -.5)
     ax.set_xscale("log")
-    ax.set_xlim(left=1e-1,right=1e2)
-    ax.set_xlabel("Covariance error / QCLT + AMR (1 = QCLT + AMR)", labelpad=7)
-    ax.grid(axis="x", color=paper_style.GRID, lw=.55, which="major", alpha=.85)
-    ax.grid(axis="x", color=paper_style.GRID, lw=.35, which="minor", alpha=.45)
-    ax.set_axisbelow(True)
-    # Highlight the exact-history reference: it is the zero-error accuracy limit
-    # in this covariance comparison, not a quantum method. Bars are normalized
-    # to the median QCLT + AMR covariance error.
-    ax.get_yticklabels()[0].set_bbox(dict(boxstyle="square,pad=0.25",
-                                         facecolor="none",
-                                         edgecolor=paper_style.COLORS["QCLT_AMR"],
-                                         linewidth=1.1))
+    ax.set_xlim(.1, 100)
+    ax.set_xlabel("Covariance error / QCLT + AMR (1 = QCLT + AMR)")
+    paper_style.legend_below(ax, handles=[
+        Line2D([0], [0], color=paper_style.INK, marker="o",
+               markerfacecolor="white", markeredgecolor=paper_style.INK,
+               markersize=4, label=r"Mean $\pm$ 1 SD")])
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
-    ax.spines["bottom"].set_color(paper_style.GRID)
-    ax.spines["bottom"].set_linewidth(.8)
     fig.tight_layout(pad=1.15)
-    fig.savefig(OUT / "qclt_vs_covariance_methods.pdf", bbox_inches="tight", facecolor="white")
+    OUT.mkdir(parents=True, exist_ok=True)
+    fig.savefig(OUT / "qclt_vs_covariance_methods.pdf", bbox_inches="tight")
     plt.close(fig)
-
-    full, reg, ks = z["full"], z["reg"], z["ks"]
-    colors = paper_style.COLORS
-    styles = {
-        f"QCLT full + AMR, {REG_BITS}-bit (ours)": (colors["QCLT_AMR"], "-", "o", "QCLT full + AMR"),
-        f"QCLT lazy + AMR, {REG_BITS}-bit": (colors["QCLT_AMR"], "--", "o", "QCLT lazy + AMR"),
-        f"QCLT lazy, fixed {REG_BITS}-bit range": (colors["QCLT"], ":", "o", "QCLT lazy, fixed grid"),
-        "AM from the same K states": (colors["CLASSICAL"], "-", "s", "AM, same K states"),
-        "single pair from the K states": (colors["CLASSICAL"], "-.", "^", "Single pair, same K states"),
-        "zero-mean, K states, about AMR centre": (colors["APPROX"], "-", "v", "Uncentred, AMR centre"),
-        "zero-mean, K states, about box centre": (colors["APPROX"], ":", "v", "Uncentred, box centre"),
-    }
-    for d in (2, 5):
-        if (d, N_HIST) not in reg:
-            raise RuntimeError(
-                "This data file predates QCLT+AMR normalization. Rerun the script without --plot-only "
-                "once to generate the full-history QCLT+AMR reference."
-            )
-        fig, ax = plt.subplots(figsize=(6.5, 4.5))
-        full_endpoint = {
-            "AM from the same K states": "AM (Haario et al. 2001)",
-            "single pair from the K states": "DE-MCz (ter Braak & Vrugt 2008)",
-        }
-        qclt_amr_key = f"QCLT full + AMR, {REG_BITS}-bit (ours)"
-        qclt_amr_reference = np.array([
-            reg[(d, k)][qclt_amr_key]["worst"] for k in ks
-        ])
-        for key, (color, ls, marker, label) in styles.items():
-            vals = np.array([reg[(d, k)][key]["worst"] for k in ks]) / qclt_amr_reference
-            se = np.array([reg[(d, k)][key]["worst_se"] for k in ks]) / qclt_amr_reference
-            xvals = list(ks)
-            if key in full_endpoint:
-                end = full[d][full_endpoint[key]]
-                # Normalize whole-history classical endpoints against QCLT + AMR
-                # evaluated with the same history size, K = N_HIST.
-                reference_at_full_history = reg[(d, N_HIST)][qclt_amr_key]["worst"]
-                vals = np.r_[vals, end["worst"] / reference_at_full_history]
-                se = np.r_[se, end["worst_se"] / reference_at_full_history]
-                xvals.append(N_HIST)
-            ax.fill_between(xvals, vals - 2 * se, vals + 2 * se, color=color, alpha=.1, lw=0)
-            ax.plot(xvals, vals, ls=ls, marker=marker, ms=3, color=color, lw=1.1, label=label)
-        ax.axhline(1, color=paper_style.INK, lw=.7)
-        tickvals = list(ks) + [N_HIST]
-        ax.set_xscale("log", base=2); ax.set_xticks(tickvals, [str(k) for k in tickvals])
-        ax.set_ylim(y - 0.5, -0.5)  # show the QCLT + AMR reference line at 1
-        ax.set_xlabel("Stored history states, K")
-        ax.set_ylabel(f"d={d}: worst-direction jump / QCLT + AMR (1 = QCLT + AMR)")
-        ax.grid(color=paper_style.GRID, lw=.6); ax.set_axisbelow(True)
-        for side in ("top", "right"): ax.spines[side].set_visible(False)
-        handles, labels = ax.get_legend_handles_labels()
-        fig.legend(handles, labels, loc="upper center", ncol=2, frameon=False,
-                   bbox_to_anchor=(.5, 1.14), columnspacing=1.0)
-        fig.tight_layout(rect=(0, 0, 1, .84))
-        fig.savefig(OUT / f"qclt_proposal_efficiency_d{d}.pdf", bbox_inches="tight")
-        plt.close(fig)
-
-    print("saved covariance-error and two stored-history proposal-efficiency plots")
 
 
 def run():
@@ -604,8 +561,9 @@ def run():
     DATA.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(20261115)
     errs = toy_errors(rng)
+    save_covariance_errors(errs, B_SHOTS)
     for k, v in errs.items():
-        print(f"{k:48s} median {np.median(v):8.2%}  (10-90%: {np.quantile(v, .1):.2%} - {np.quantile(v, .9):.2%})",
+        print(f"{k:48s} mean {np.mean(v):8.2%}, SD {np.std(v, ddof=1):.2%}",
               flush=True)
     full, reg = {}, {}
     for d in (2, 5):
@@ -647,11 +605,18 @@ def run():
             qubits = []
         pickle.dump(dict(errs=errs, full=full, reg=reg, ks=KS, b_shots=B_SHOTS, n_hist=N_HIST,
                          per_circuit=PER_CIRCUIT, qubits=qubits), f)
-    plot()
+    write_covariance_table(errs, B_SHOTS)
 
 
 if __name__ == "__main__":
-    if "--plot-only" in sys.argv:
+    if "--table-only" in sys.argv:
+        errs = toy_errors(np.random.default_rng(20261115))
+        save_covariance_errors(errs, B_SHOTS)
+        write_covariance_table(errs, B_SHOTS)
+    elif "--covariance-only" in sys.argv:
+        save_covariance_errors(toy_errors(np.random.default_rng(20261115)), B_SHOTS)
+        plot()
+    elif "--plot-only" in sys.argv:
         plot()
     else:
         run()

@@ -50,7 +50,7 @@ def run():
                 score = chain_metric(proposal, post, rng, n=N_CHAINS, T=T_STEPS)["worst"]
                 values[i, rep, j] = score / max(optimum, 1e-12)
         print(f"d={d}: " + ", ".join(
-            f"{name} {np.median(values[i, :, j]):.3f}"
+            f"{name} mean {values[i, :, j].mean():.3f}, SD {values[i, :, j].std(ddof=1):.3f}"
             for j, name in enumerate(methods)), flush=True)
 
     DATA.mkdir(parents=True, exist_ok=True)
@@ -70,18 +70,16 @@ def plot():
     markers = ["o", "s", "^", "D"]
     fig, ax = plt.subplots(figsize=(5.3, 3.5))
     for j, name in enumerate(methods):
-        med = np.median(values[:, :, j], axis=1)
-        lo, hi = np.quantile(values[:, :, j], [.1, .9], axis=1)
-        ax.fill_between(dims, lo, hi, color=colors[j], alpha=.12, lw=0)
-        ax.plot(dims, med, styles[j], marker=markers[j], ms=3.5,
+        mean = values[:, :, j].mean(axis=1)
+        sd = values[:, :, j].std(axis=1, ddof=1)
+        ax.fill_between(dims, mean - sd, mean + sd, color=colors[j], alpha=.12, lw=0)
+        ax.plot(dims, mean, styles[j], marker=markers[j], ms=3.5,
                 color=colors[j], lw=1.2, label=name)
     ax.axhline(1, color=paper_style.INK, lw=.7)
     ax.set(xscale="log", xticks=dims, xticklabels=[str(d) for d in dims],
            xlabel="Parameter dimension, $d$",
            ylabel="Worst-direction jump / optimum (1 = optimal)")
-    ax.grid(color=paper_style.GRID, lw=.6)
-    ax.set_axisbelow(True)
-    ax.legend(frameon=False, ncol=2, fontsize=7)
+    paper_style.legend_below(ax, ncol=2)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     fig.tight_layout()
