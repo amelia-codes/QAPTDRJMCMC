@@ -12,7 +12,7 @@ Use Python 3.12 with the packages in `requirements.txt`. The figures need LaTeX
 with Computer Modern fonts. Run from the repository root.
 
 ```bash
-python3.12 generate_paper_figures.py              # recompute everything (about a minute), then plot
+python3.12 generate_paper_figures.py              # recompute everything (about 2 minutes), then plot
 python3.12 generate_paper_figures.py --plot-only  # redraw from the saved data
 python3.12 -m unittest                            # check the circuits and measurement laws
 ```

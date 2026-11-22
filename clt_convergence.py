@@ -1,17 +1,18 @@
 """Do repeated coin-sum steps become Gaussian? (coin_sum_clt_convergence.pdf)
 
-A pilot walk chooses an AMR grid. On that grid, walks with N = 1 to 4
+A pilot walk chooses an AMR grid. On that grid, walks with N = 1 to 16
 coin-sum steps are sampled, with fresh coins for every step and the same
 history. For each history, the summed step is whitened by its exact
 conditional covariance, N (SCALE2 S_h + ISO_VAR I), and compared with a
 standard Gaussian. By the central limit theorem the distance should fall
-roughly as N^(-1/2).
+roughly as N^(-1/2), until it reaches the estimator's own floor: the distance
+it reports for exact Gaussian samples.
 
 The 8-bit position register wraps around for N >= 2, so the summed step is
 read from the 14-bit record registers, which are not counted in the walk's
 quoted 33 qubits.
 
-    python3.12 clt_convergence.py              # recompute (about 15 s) and plot
+    python3.12 clt_convergence.py              # recompute (about 1 minute) and plot
     python3.12 clt_convergence.py --plot-only  # redraw from data/clt_convergence.npz
 """
 
@@ -26,8 +27,8 @@ import plot_style as style
 from walk import BITS, D, ISO_VAR, SCALE2, amr_window, pilot_histories, run_walk
 
 DATA = Path(__file__).parent / "data" / "clt_convergence.npz"
-STEPS = [1, 2, 3, 4]
-WALK_SEEDS = [15, 22, 23, 24]
+STEPS = list(range(1, 17))
+WALK_SEEDS = [15] + [20 + n for n in STEPS[1:]]
 
 
 def whitened_steps(history, step, grid, steps):
@@ -67,13 +68,14 @@ def run(shots=100_000):
     for i, (steps, seed) in enumerate(zip(STEPS, WALK_SEEDS)):
         history, step = run_walk(BITS, grid, shots, seed, steps=steps, record_bits=14)
         distances.append(sliced_wasserstein(whitened_steps(history, step, grid, steps), 20261116 + i))
+    gaussian = np.random.default_rng(20261122).standard_normal((shots, D))
     DATA.parent.mkdir(exist_ok=True)
-    np.savez_compressed(DATA, distances=np.array(distances))
+    np.savez_compressed(DATA, distances=np.array(distances), floor=sliced_wasserstein(gaussian, 20261116))
 
 
 def plot():
     with np.load(DATA) as saved:
-        distances = saved["distances"]
+        distances, floor = saved["distances"], saved["floor"].mean()
     steps = np.array(STEPS)
     mean, sd = distances.mean(axis=1), distances.std(axis=1, ddof=1)
     style.apply()
@@ -81,7 +83,10 @@ def plot():
     ax.errorbar(steps, mean, yerr=sd, color=style.COLORS["COIN_SUM_AMR"], marker="o", ms=5,
                 capsize=3, lw=1.6, label=r"Covariance-scaled coin sum (mean $\pm$ 1 bootstrap SD)")
     ax.plot(steps, mean[0] / np.sqrt(steps), ls="--", color=style.MUTED, lw=1.0, label=r"$N^{-1/2}$ reference")
+    ax.axhline(floor, ls=":", color=style.COLORS["BASELINE"], lw=1.2, label="Exact Gaussian samples (estimator floor)")
     ax.set_xticks(steps)
+    ax.set_yscale("log")
+    ax.set_yticks([.02, .05, .1], ["0.02", "0.05", "0.1"])
     ax.set_xlabel("Number of coin-sum steps, $N$")
     ax.set_ylabel("Sliced Wasserstein distance to Gaussian")
     style.legend_below(ax)

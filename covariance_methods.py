@@ -27,28 +27,35 @@ from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
 
 import plot_style as style
 from walk import D, ISO_VAR, MODES, PAIRS, SCALE2, X0, all_histories, amr_window, pilot_histories
 
 DATA = Path(__file__).parent / "data" / "covariance_methods.npz"
 TABLE = style.FIGURES / "covariance_method_errors.tex"
-# Method key: (label, colour). The methods proposed in this work come first,
-# then the readout methods from the literature. This is also the table order.
+# Method key: (label, bar colour). The methods proposed in this work come
+# first, then the readout methods from the literature; this is also the table
+# order. Bar colours extend the muted palette of the AMR bar charts.
 METHODS = {
     "coin_sum_amr": ("Covariance-scaled coin sum + AMR", style.COLORS["COIN_SUM_AMR"]),
     "coin_sum_fixed": ("Covariance-scaled coin sum, fixed local grid", style.COLORS["COIN_SUM"]),
-    "cs_upper": ("Cauchy--Schwarz upper bound", "#6250D6"),
-    "cs_average": ("Cauchy--Schwarz upper/lower average", "#E87BA4"),
-    "single_pair": ("Single history-pair difference", "#B07A00"),
-    "pairwise": ("Pairwise moments", "#C2477F"),
-    "swap": ("SWAP test", "#1C5CAB"),
-    "hadamard": ("Hadamard test", "#8A6FE0"),
-    "qae": ("Amplitude estimation", "#008300"),
-    "qpca": ("Covariance matrix preparation + readout", "#1BAF7A"),
+    "cs_upper": ("Cauchy--Schwarz upper bound", style.COLORS["MEASURED"]),
+    "cs_average": ("Cauchy--Schwarz upper/lower average", style.COLORS["BASELINE"]),
+    "single_pair": ("Single history-pair difference", "#381058"),
+    "pairwise": ("Pairwise moments", "#2F7F7A"),
+    "swap": ("SWAP test", "#C19A2B"),
+    "hadamard": ("Hadamard test", "#547F9E"),
+    "qae": ("Amplitude estimation", "#6E7F2D"),
+    "qpca": ("Covariance matrix preparation + readout", "#A0617E"),
 }
-READOUTS = ["swap", "hadamard", "qae", "qpca", "pairwise"]
+# Line colour and marker of each readout in the budget plot.
+READOUTS = {
+    "swap": ("#1C5CAB", "o"),
+    "hadamard": ("#8A6FE0", "s"),
+    "qae": ("#008300", "^"),
+    "qpca": ("#D9A300", "D"),
+    "pairwise": ("#C2477F", "v"),
+}
 # Separate measurement settings (circuits) each readout needs for a 2 x 2
 # covariance. SWAP and Hadamard read the one off-diagonal entry (variances are
 # supplied); covariance preparation reads the diagonal and one interference
@@ -213,7 +220,7 @@ def budget_sweep(reps=100):
                 stream = rng if kind in ("pairwise", "swap") else rng_later
                 estimates = nearest_psd(readout(h, kind, int(budget), stream, reps))
                 covariances = spacing**2 * (SCALE2 * estimates + ISO_VAR * np.eye(D))
-                errors[READOUTS.index(kind), b, j * reps:(j + 1) * reps] = (
+                errors[list(READOUTS).index(kind), b, j * reps:(j + 1) * reps] = (
                     np.linalg.norm(covariances - target, axis=(1, 2)) / np.linalg.norm(target))
     return errors
 
@@ -267,7 +274,7 @@ def plot():
     reference = errors["coin_sum_amr"].mean()
     left, right = .1, 0.
     for i, (key, (label, color)) in enumerate(METHODS.items()):
-        y = i + (.6 if key in READOUTS[:4] else 0)
+        y = i + (.6 if key in ("swap", "hadamard", "qae", "qpca") else 0)
         values = errors[key] / reference
         mean, sd = values.mean(), values.std(ddof=1)
         right = max(right, mean + sd)
@@ -287,25 +294,23 @@ def plot():
                                            markersize=4, label=r"Mean $\pm$ 1 SD")])
     style.save(fig, "coin_sum_vs_covariance_methods.pdf")
 
-    # Error against readout budget, with the two coin sums as reference bands.
+    # Error against readout budget, with the two coin sums as reference
+    # lines and bands. Points are spread slightly sideways so their error
+    # bars do not overlap.
     style.apply()
     fig, ax = plt.subplots(figsize=(7., 4.6))
-    for kind, values in zip(READOUTS, 100 * budget_errors):
-        label, color = METHODS[kind]
-        mean, sd = values.mean(axis=1), values.std(axis=1, ddof=1)
-        ax.fill_between(BUDGETS, mean - sd, mean + sd, color=color, alpha=.05, lw=0)
-        ax.plot(BUDGETS, mean, marker="o", ms=4, lw=1.4, color=color, label=label)
+    for i, (kind, values) in enumerate(zip(READOUTS, 100 * budget_errors)):
+        color, marker = READOUTS[kind]
+        ax.errorbar(BUDGETS * 1.06 ** (i - 2), values.mean(axis=1), yerr=values.std(axis=1, ddof=1),
+                    color=color, marker=marker, ms=5, lw=1.4, capsize=2.5, label=METHODS[kind][0])
     for key in ("coin_sum_fixed", "coin_sum_amr"):
         label, color = METHODS[key]
         mean, sd = 100 * errors[key].mean(), 100 * errors[key].std(ddof=1)
         ax.axhspan(mean - sd, mean + sd, color=color, alpha=.09, lw=0)
         ax.axhline(mean, color=color, lw=1.8, label=label)
-    ax.set(xscale="log", xlabel="Readout shots or amplitude-estimation oracle calls",
-           ylabel=r"Next-step covariance error (\%)")
-    ax.set_ylim(bottom=0)
-    handles, labels = ax.get_legend_handles_labels()
-    style.legend_below(ax, handles + [Patch(facecolor=style.MUTED, alpha=.18)],
-                       labels + [r"Mean $\pm$ 1 SD"], ncol=2)
+    ax.set(xscale="log", yscale="log", xlabel="Readout shots or amplitude-estimation oracle calls",
+           ylabel=r"Next-step covariance error (\%; mean $\pm$ 1 SD)")
+    style.legend_below(ax, ncol=2)
     style.save(fig, "coin_sum_step_generation.pdf")
 
 

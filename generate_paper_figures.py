@@ -1,6 +1,6 @@
 """Recompute every result, then draw every figure and table into figures/.
 
-    python3.12 generate_paper_figures.py              # recompute (about a minute) and plot
+    python3.12 generate_paper_figures.py              # recompute (about 2 minutes) and plot
     python3.12 generate_paper_figures.py --plot-only  # redraw from the saved data/
 """
 

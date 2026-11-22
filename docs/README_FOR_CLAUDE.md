@@ -30,7 +30,7 @@ separate, much smaller study now builds actual coherent coin-sum step circuits.
 | --- | --- | --- |
 | `tdrjmcmc_qclt.py`, `qclt_amr.py`, and old application figures (in git history) | Classical NumPy MCMC. Coin-sum pair coins and steps are sampled classically. Likelihood, acceptance, birth/death, tempering, history, grid updates, and waveform evaluation are classical. | Performance of a *classical sampler using the coin-sum proposal distribution*. A separate circuit check verifies that the proposal law agrees with a Qiskit circuit. |
 | `qcov.py` and `compact_qclt.py` | Qiskit proposal circuits and exact ideal output-law samplers. | One coherent kick or a small coherent walk; no end-to-end MCMC. |
-| `quantum_walk_study.py` and focused walk figures (in git history) | A two-coordinate, three-history coherent walk segment, with no intermediate measurement inside a segment. | History-conditioned step generation. AMR is selected **classically between separate circuits** from pilot measurements. No likelihood or Metropolis acceptance. |
+| [`walk.py`](../walk.py) and the experiments built on it | A two-coordinate, three-history coherent walk segment, with no intermediate measurement inside a segment. | History-conditioned step generation. AMR is selected **classically between separate circuits** from pilot measurements. No likelihood or Metropolis acceptance. |
 | `qaptdrjmcmc.ipynb` | A partial circuit with a placeholder likelihood. | It does not implement the full plotted sampler. |
 
 Calling the old application methods “quantum” without the words **“coin-sum
@@ -252,12 +252,11 @@ quantum runtime or query-complexity claims.
   task. State whether the metric is conditional or averaged over histories,
   and whether the comparison includes sampling noise, grid error, and
   loader/oracle costs. Show AMR failure regimes, not only favorable pilots.
-- Preserve the useful tests: `test_compact_qclt.py`
-  checks exact kick-law equality, and
-  `test_quantum_walk_study.py` checks the
-  compressed coherent history against explicit snapshots. Reproducing the
-  focused figures (in git history) additionally runs
-  `qclt_step_comparison.py` and `amr_battle_test.py`.
+- Preserve the useful tests: [`test_walk.py`](../test_walk.py) checks the
+  compressed coherent history against explicit snapshots and the sampled
+  steps against the exact covariance, and
+  [`test_covariance_methods.py`](../test_covariance_methods.py) checks each
+  readout law against its circuit.
 
 The shorter [project README](../README.md) points to current results. This
 handoff records the issues so they are not reintroduced while changing the
