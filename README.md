@@ -1,99 +1,108 @@
 # Quovar
 
 Quovar builds a coherent random-walk step whose covariance follows the walk's
-history, and studies how adaptive register grids (AMR) affect its accuracy.
-The current results use two coordinates, three preparatory positions, and
-8-bit position registers. Figures and insertable LaTeX tables are in
-[`figures/quovar/`](figures/quovar/README.md) and [`paper/figures/`](paper/figures/).
+own history, the **covariance-scaled coin sum** (called QCLT in earlier
+versions), and studies how an adaptive register grid (AMR) changes its
+accuracy. The examples use two coordinates, three history positions and
+8-bit position registers (33 logical qubits).
 
-## Run the results
+## Run it
 
-Use Python 3.12 and the packages in `requirements.txt`. Figure rendering also
-requires LaTeX with Computer Modern fonts. Run commands from the repository root.
+Use Python 3.12 with the packages in `requirements.txt`. The figures need LaTeX
+with Computer Modern fonts. Run from the repository root.
 
 ```bash
-# Redraw the ten figures and two tables from saved data.
-python3.12 generate_paper_figures.py --plot-only
-
-# Recompute every current experiment, then draw its figures and tables.
-python3.12 generate_paper_figures.py
-
-# Check the circuits, probability laws, and compressed history representation.
-python3.12 -m unittest discover
+python3.12 generate_paper_figures.py              # recompute everything (about a minute), then plot
+python3.12 generate_paper_figures.py --plot-only  # redraw from the saved data
+python3.12 -m unittest                            # check the circuits and measurement laws
 ```
 
-The same seeds, measurement budgets, and mean ± one sample standard deviation
-(`ddof=1`) are used when recomputing results. Each plot writes directly to
-`figures/quovar/`; figure names are stable.
+Each experiment module also runs on its own, for example `python3.12 amr.py`.
+Results go to `data/` (NumPy arrays) and `figures/` (PDF figures and LaTeX
+tables). Both folders are generated and are not kept in git.
 
 ## Read the code in this order
 
-[`generate_paper_figures.py`](generate_paper_figures.py) lists the experiments
-in execution order. The implementation uses ordinary functions and arrays.
-
-| File | What to read for |
+| File | Contents |
 | --- | --- |
-| [`quantum_walk_study.py`](quantum_walk_study.py) | The physical problem, quantum circuit, decoded histories, covariance identity, and Gaussian-convergence experiment, in that order. Start with `make_walk`. |
-| [`qcov.py`](qcov.py) | Integer addition, three-outcome quantum coins, and exact sampling of the constructed walk circuit. |
-| [`covariance_benchmarks.py`](covariance_benchmarks.py) | The ten method labels, finite-shot measurement laws, and explicit comparison circuits. |
-| [`qclt_proposal_comparison.py`](qclt_proposal_comparison.py) | Score the ten next-step methods against the same physical covariance, then write the table and bar chart. |
-| [`qclt_step_comparison.py`](qclt_step_comparison.py) | Repeat the five readout methods at different measurement/oracle budgets. |
-| [`amr_battle_test.py`](amr_battle_test.py) | Define the seven walk geometries, choose an AMR window, check coverage, and compare fixed and adaptive grids. |
-| [`amr_tuning.py`](amr_tuning.py) | Compare three window widths and three choices of grid axes using matched history samples. |
-| [`amr_criteria.py`](amr_criteria.py) | Decide whether a changed distribution needs refinement or coarsening. |
-| [`paper_style.py`](paper_style.py), [`paper_costs.py`](paper_costs.py) | Shared plot appearance and circuit-stage resource counts. |
+| [`walk.py`](walk.py) | The setting, integer adders, the walk circuit, its exact sampler, the pilot walk and the AMR window |
+| [`covariance_methods.py`](covariance_methods.py) | The ten next-step methods, the comparison at 384 shots, the readout-budget sweep, and the error table |
+| [`clt_convergence.py`](clt_convergence.py) | Repeated coin-sum steps converging to a Gaussian |
+| [`amr.py`](amr.py) | Fixed grids versus AMR, window widths and axes, and window-rebuild thresholds on seven geometries |
+| [`circuit_costs.py`](circuit_costs.py) | Explicit circuits for the readout methods and the qubit-count table |
+| [`plot_style.py`](plot_style.py) | Shared fonts, colours and legend placement |
+| [`test_walk.py`](test_walk.py), [`test_covariance_methods.py`](test_covariance_methods.py) | Checks that circuits match the laws and formulas the experiments use |
 
-Circuit checks are collected in `test_quantum_walk_study.py` and
-`test_covariance_benchmarks.py`. The explicit-history reference circuit lives
-in the tests, alongside the compressed circuit it checks.
+## The walk
 
-## The walk, mathematically
-
-For a fixed history of positions $h_1,\ldots,h_K$, each history pair contributes
-$r_{ab}(h_a-h_b)$, where $r_{ab}$ is $-1$, $0$, or $+1$ with probabilities
-$q/2$, $1-q$, and $q/2$. The circuit sums these independent contributions.
+The walker takes K = 3 preparatory steps; its positions $h_1,\ldots,h_K$ are
+the history. Each pair of history positions contributes $r_{ab}(h_a-h_b)$,
+where $r_{ab}$ is $-1$, $0$ or $+1$ with probabilities $q/2$, $1-q$ and $q/2$.
 Since
 
 $$
 \sum_{a<b}(h_a-h_b)(h_a-h_b)^T=K(K-1)S_h,
 $$
 
-choosing $q=\alpha/[K(K-1)]$ gives step covariance $\alpha S_h$.
-The code adds a small isotropic lattice regularizer. This identity explains
-the covariance scores without requiring a full statevector of the walk.
-The circuit itself prepares coins and performs controlled integer additions.
+choosing $q=\alpha/[K(K-1)]$ gives step covariance $\alpha S_h$. A small
+independent $\pm1$ step keeps the covariance positive definite.
 
-The preparatory signs determine all three history positions, so the circuit
-reconstructs pair differences from six coherent sign qubits. The final walk
-uses 33 qubits with 8-bit coordinates. Independent repeated steps use fresh
-coins. The convergence plot whitens the sum by its history-conditional
-covariance before comparing it with a standard Gaussian.
+The preparatory sign coins determine the whole history, so the circuit adds
+each pair difference straight from those coins and never stores the history.
+This compression relies on the history being generated by known coins; it does
+not apply to an arbitrary unknown quantum history.
 
-AMR chooses the center, principal axes, and spacing from measurements of an
-earlier circuit. That coordinate map is held fixed during the next coherent
-walk. The [figure guide](figures/quovar/README.md) gives the comparison inputs,
-readout costs, and definitions of every plotted error.
+Every gate is a fresh coin (H or RY on $|0\rangle$) or a controlled X, which
+only permutes basis states. Measuring the circuit is therefore equivalent to
+drawing the coins at random and applying the gates to bits, which is how
+`walk.sample_circuit` simulates it exactly. The same fact means the walk has no
+interference and offers no quantum speedup over classical sampling.
 
-## Results and paper files
+AMR measures histories from a coarse 6-bit pilot circuit, then chooses the
+next circuit's grid: centred on their mean, aligned with their principal axes,
+with the 256 cells spanning 16 standard deviations. The choice is classical
+and happens between circuits.
 
-The entry point reads and writes six datasets in `data/quantum_walk/`:
+## The ten comparison methods
 
-| Dataset | Result |
+All are scored by the relative error of their next-step covariance against
+the same continuous-history target, on all 64 histories.
+
+| Method | What it does |
 | --- | --- |
-| `results.npz` | Gaussian convergence of repeated steps |
-| `covariance_errors.npz` | Ten-method comparison |
-| `step_estimator_comparison.npz` | Measurement-budget comparison |
-| `amr_battle_test.npz` | Fixed grids versus AMR across seven geometries |
-| `amr_tuning.npz` | Window widths and grid axes |
-| `amr_criteria.npz` | Refinement and coarsening thresholds |
+| Coin sum + AMR | The coin-sum step on 40 AMR windows, each chosen from 1,000 pilot histories |
+| Coin sum, fixed local grid | The same step on a fixed 8-bit grid around the start |
+| Cauchy–Schwarz upper bound | Exact variances; every correlation set to +1 |
+| Cauchy–Schwarz upper/lower average | Exact variances; correlations set to 0 (the diagonal covariance) |
+| Single history-pair difference | One uniformly chosen signed pair difference, scaled by $\sqrt{\alpha/2}$ and rounded |
+| Pairwise moments | Finite-shot estimates of centred pair-difference products |
+| SWAP test | Signed-distance overlap, with exact column norms supplied |
+| Hadamard test | Signed real overlap of the centred columns, with norms supplied |
+| Amplitude estimation | Canonical phase estimation of the pairwise moments; 381 oracle calls |
+| Covariance matrix preparation + readout | The state $S/\operatorname{tr}S$ (Gordon et al. 2022), read out with finite shots |
 
-The data files retain individual errors so plots calculate their means and
-standard deviations directly. Older datasets and exploratory notebooks are
-research records; the current entry point uses the six files above.
+The readout methods output covariance entries, not a step: they are given
+384 shots (or oracle calls) and then an ideal Gaussian step loader, which a
+real device would also have to implement. Equal shot counts are not equal
+gate counts or run times.
 
-[`paper/`](paper/README.md) contains the manuscript copy, bibliography, tables,
-and Quantikz/TikZ sources. The [literature review](docs/QCLT_LITERATURE_REVIEW.md)
-maps claims to references. The [qubit audit](docs/QUBIT_AUDIT.md) and
-[historical implementation audit](docs/README_FOR_CLAUDE.md) record the earlier
-framework and its resource assumptions. Older application scripts were
-removed from the active code; their committed versions remain in Git history.
+Error bars and bands show mean ± one sample standard deviation (`ddof=1`)
+across histories, windows or repetitions, not standard errors.
+
+## Caveats
+
+- The readout methods' measurement laws are sampled directly; the tests check
+  them against the explicit circuits in `circuit_costs.py`.
+- In the Gaussian-convergence experiment, the 8-bit position register wraps
+  around for two or more steps. The summed step is read from two 14-bit record
+  registers, which are not included in the 33-qubit count.
+- AMR helps the five geometries a fixed local grid resolves poorly, and is
+  worse on the two it already resolves almost exactly.
+
+## Documents
+
+The [literature review](docs/LITERATURE_REVIEW.md) maps claims to references.
+The [qubit audit](docs/QUBIT_AUDIT.md) and the
+[audit of the earlier framework](docs/README_FOR_CLAUDE.md) record what the
+earlier, larger MCMC code did and did not show; that code is in the git history.
+`notebooks/exploratory/` holds early research notebooks.

@@ -1,19 +1,20 @@
 # Handoff: what was wrong with the earlier “quantum” framework
 
 Historical source filenames in this note refer to the framework before the
-November 2026 cleanup. The current implementation and reading order are in
+November 2026 cleanup; those files are in the git history. The covariance-scaled
+coin sum ("coin sum" below) was called QCLT at the time. The current implementation and reading order are in
 [the project README](../README.md).
 
-Read this before modifying the QCLT, AMR, MCMC, or figure code. **The old
+Read this before modifying the coin sum, AMR, MCMC, or figure code. **The old
 application plots do not demonstrate a fully coherent quantum
 APT + TD + RJ + MCMC algorithm or a quantum speedup.** They are useful classical MCMC
 experiments with an exactly simulated circuit-compatible proposal law. A
-separate, much smaller study now builds actual coherent QCLT step circuits.
+separate, much smaller study now builds actual coherent coin-sum step circuits.
 
 **Five points to keep in mind:**
 
 1. The plotted APT/TD/RJ/MCMC runs execute classically; they sample a
-   circuit-compatible QCLT proposal law in NumPy.
+   circuit-compatible coin-sum proposal law in NumPy.
 2. The 95-qubit and 33-qubit results have restricted input models and do not
    fit the full multiwavelet sampler into 100 qubits.
 3. Exact covariance on a rounded grid is not zero error against the intended
@@ -27,13 +28,13 @@ separate, much smaller study now builds actual coherent QCLT step circuits.
 
 | Code/result | What actually runs | What it establishes |
 | --- | --- | --- |
-| `tdrjmcmc_qclt.py`, `qclt_amr.py`, and [old application figures](../figures/previous/README.md) | Classical NumPy MCMC. QCLT pair coins and steps are sampled classically. Likelihood, acceptance, birth/death, tempering, history, grid updates, and waveform evaluation are classical. | Performance of a *classical sampler using the QCLT proposal distribution*. A separate circuit check verifies that the proposal law agrees with a Qiskit circuit. |
-| [`qcov.py`](../qcov.py) and `compact_qclt.py` | Qiskit proposal circuits and exact ideal output-law samplers. | One coherent kick or a small coherent walk; no end-to-end MCMC. |
-| [`quantum_walk_study.py`](../quantum_walk_study.py) and [focused walk figures](../figures/quovar/README.md) | A two-coordinate, three-history coherent walk segment, with no intermediate measurement inside a segment. | History-conditioned step generation. AMR is selected **classically between separate circuits** from pilot measurements. No likelihood or Metropolis acceptance. |
+| `tdrjmcmc_qclt.py`, `qclt_amr.py`, and old application figures (in git history) | Classical NumPy MCMC. Coin-sum pair coins and steps are sampled classically. Likelihood, acceptance, birth/death, tempering, history, grid updates, and waveform evaluation are classical. | Performance of a *classical sampler using the coin-sum proposal distribution*. A separate circuit check verifies that the proposal law agrees with a Qiskit circuit. |
+| `qcov.py` and `compact_qclt.py` | Qiskit proposal circuits and exact ideal output-law samplers. | One coherent kick or a small coherent walk; no end-to-end MCMC. |
+| `quantum_walk_study.py` and focused walk figures (in git history) | A two-coordinate, three-history coherent walk segment, with no intermediate measurement inside a segment. | History-conditioned step generation. AMR is selected **classically between separate circuits** from pilot measurements. No likelihood or Metropolis acceptance. |
 | `qaptdrjmcmc.ipynb` | A partial circuit with a placeholder likelihood. | It does not implement the full plotted sampler. |
 
-Calling the old application methods “quantum” without the words **“QCLT
-kick distribution simulated classically”** is misleading. The QCLT circuit
+Calling the old application methods “quantum” without the words **“coin-sum
+kick distribution simulated classically”** is misleading. The coin-sum circuit
 and its classical coin sampler have the same final measurement law here
 because the circuit uses basis-preserving arithmetic after preparing the
 coins; no useful interference or quantum speedup has been demonstrated.
@@ -88,7 +89,7 @@ MCMC execution into a coherent quantum sampler.
 6. **Logical width hid circuit depth and hardware cost.** High-level Qiskit
    `mcx`, additions, and `StatePreparation` are not unit-cost hardware
    gates. A zero-optimization `u,cx` decomposition of one 33-qubit 8-bit
-   local QCLT step has **57,806 CX gates** and depth **69,065**. No noise,
+   local coin-sum step has **57,806 CX gates** and depth **69,065**. No noise,
    connectivity, fault-tolerance, or physical-qubit estimate has been
    demonstrated. Fresh proposal coins are needed for independent coherent
    steps; reusing an unreset coin does not create a fresh draw.
@@ -98,24 +99,24 @@ MCMC execution into a coherent quantum sampler.
 - **The requested output is the next random step, not a measured covariance
   matrix.** Pairwise-moment, SWAP-overlap, quantum PCA, and amplitude
   estimation routines often output covariance information. They need an
-  additional step loader before they solve the same task as QCLT. Conversely,
+  additional step loader before they solve the same task as the coin sum. Conversely,
   classical pair-difference sampling produces exactly the same measured
-  QCLT step law with little arithmetic. Do not equate “fewer covariance
+  coin-sum step law with little arithmetic. Do not equate “fewer covariance
   readout shots” with a general quantum speedup.
-- **The old 0% QCLT error used the wrong target for a physical comparison.**
-  QCLT has exactly the prescribed conditional covariance *of its rounded
+- **The old 0% coin-sum error used the wrong target for a physical comparison.**
+  The coin sum has exactly the prescribed conditional covariance *of its rounded
   lattice history*. This is an algebraic identity, not proof that it matches
   the intended continuous physical covariance. The corrected
-  [step comparison](../figures/quovar/qclt_step_generation.pdf) scores
+  step comparison (`figures/coin_sum_step_generation.pdf`) scores
   every method against the same unrounded, history-specific target across
-  64 branches. On an 8-bit local grid, QCLT has **8.8% median physical
+  64 branches. On an 8-bit local grid, the coin sum has **8.8% median physical
   error**. At 384 intermediate covariance-measurement shots, ideal-loaded
   pairwise and SWAP pipelines have **11.8%** and **9.3%** median error; their
   curves approach the same grid-error floor as shots increase. The AMR plot
   instead scores the *unconditional* target, hence its local-grid **9.04%**
   number. These are different summaries of the same rounding problem.
 - **There was no equal-qubit comparison.** The corrected figure shows **33
-  qubits** for the complete known-mode QCLT step, versus **5 qubits** for
+  qubits** for the complete known-mode coin-sum step, versus **5 qubits** for
   each pairwise or SWAP *entry-readout* circuit. Those 5-qubit circuits do
   not produce a step. A two-coordinate 8-bit Gaussian output register
   alone needs **16** state qubits; the published Kitaev–Webb shear stage
@@ -126,18 +127,18 @@ MCMC execution into a coherent quantum sampler.
   classical history branch and a free exact loader; SWAP also receives
   exact variances. They are analytic shot models checked against actual
   5-qubit circuit probabilities, not hardware benchmarks.
-- **QCLT's proposal law is discrete and can differ from adaptive Gaussian
+- **The coin sum's proposal law is discrete and can differ from adaptive Gaussian
   Metropolis even when covariance agrees.** In the application code it uses
   only six reservoir histories for five coordinates, so the covariance is
   noisy. The probability `q` of using each pair is capped at 1; when the
-  adapted scale is larger, QCLT's step covariance no longer follows the
+  adapted scale is larger, the coin sum's step covariance no longer follows the
   intended scaled covariance. The isotropic lattice floor, rounding,
   periodic-phase convention, and acceptance rate can all affect mixing.
   Equal conditional covariance does not imply equal posterior efficiency.
 
-See the [literature and matched-test review](QCLT_LITERATURE_REVIEW.md) for
+See the [literature and matched-test review](LITERATURE_REVIEW.md) for
 the access assumptions and costs of the other methods. It does **not**
-establish that QCLT dominates all common covariance estimators.
+establish that the coin sum dominates all common covariance estimators.
 
 ## Problems with AMR claims
 
@@ -148,11 +149,11 @@ establish that QCLT dominates all common covariance estimators.
 - **The qubit saving concerns a representation, not total runtime.** At the
   same 33-qubit final width, AMR can reduce physical grid-rounding error,
   but it also consumes pilot executions, PCA, window checks, and circuit
-  recompilation. The gain is not unique to QCLT: another proposal family
+  recompilation. The gain is not unique to the coin sum: another proposal family
   on the same improved grid can also benefit.
-- **AMR is not uniformly better.** The [seven-geometry stress
-  test](../figures/quovar/qclt_amr_covariance_error.pdf) compares AMR and fixed grids on seven cases, while
-  the [pilot reliability plot](../figures/quovar/qclt_amr_pilot_success.pdf) reports the run-level outcomes. The comparison finds cases where
+- **AMR is not uniformly better.** The seven-geometry stress
+  test (`figures/coin_sum_amr_covariance_error.pdf`) compares AMR and fixed grids on seven cases, while
+  the pilot reliability plot (`figures/coin_sum_amr_pilot_success.pdf`) reports the run-level outcomes. The comparison finds cases where
   AMR beats an informed local fixed grid and two where it loses. On the
   tilted case, local fixed error is **9.04%** versus **2.61%** AMR median;
   on a grid-aligned case, it is **0.114%** versus **4.88%**. When fixed
@@ -185,7 +186,7 @@ establish that QCLT dominates all common covariance estimators.
   example; two chains plus one copied history account for 225. Its
   likelihood is marked as a placeholder and it lacks Metropolis
   acceptance, birth/death RJ maps, and AMR. The width is not evidence for a
-  complete coherent sampler. [`qcov.build_adaptive_walk`](../qcov.py) is a
+  complete coherent sampler. `qcov.build_adaptive_walk` is a
   separate coherent proposal demonstration, whose snapshots and fresh
   coins grow with the number of steps.
 - The full-grid proposal in `tdrjmcmc_qclt.py` uses raw
@@ -211,7 +212,7 @@ support an end-to-end proposal claim.
 
 ## Problems found in the old application figures
 
-The [old figure guide](../figures/previous/README.md) documents a later audit
+The old figure guide (in git history) documents a later audit
 of experimental fairness. Several defects were **fixed in the current
 archived plots**, so do not report them as still-active code bugs:
 
@@ -220,7 +221,7 @@ archived plots**, so do not report them as still-active code bugs:
 | Our repeated runs shared one favorable noise realization while BayesWave runs had different ones. | Run-to-run spread and cross-sampler comparisons were optimistic. | Cross-sampler studies now vary noise by seed; single-posterior studies intentionally hold it fixed and say so. |
 | The 8,192 waveform evaluations used to build a time-frequency birth map were omitted. | TF-birth methods appeared cheaper. | Setup evaluations are now counted. |
 | “Reaches 0.95” meant one instantaneous crossing. | It did not match a sustained posterior-accuracy metric. | Now uses the median over the second half of the run so far. |
-| Fisher derivatives were costed by finite differences even though a closed form is available for these wavelets. | A claimed fourfold QCLT cost advantage over Fisher was an artifact. | The claim was withdrawn; plots show actual Fisher and a free-derivative reference. |
+| Fisher derivatives were costed by finite differences even though a closed form is available for these wavelets. | A claimed fourfold coin-sum cost advantage over Fisher was an artifact. | The claim was withdrawn; plots show actual Fisher and a free-derivative reference. |
 | An adaptive-grid wavelet walk started near the injected truth. | The test had an unrealistic head start. | Start now comes from the data's time-frequency map; an adaptive 16-bit baseline was added. |
 | One adaptive-grid test treated phase as non-periodic. | It gave misleading behavior at the phase seam. | Periodic phase, circular statistics, and wrapped references were added. |
 
@@ -253,9 +254,9 @@ quantum runtime or query-complexity claims.
   loader/oracle costs. Show AMR failure regimes, not only favorable pilots.
 - Preserve the useful tests: `test_compact_qclt.py`
   checks exact kick-law equality, and
-  [`test_quantum_walk_study.py`](../test_quantum_walk_study.py) checks the
+  `test_quantum_walk_study.py` checks the
   compressed coherent history against explicit snapshots. Reproducing the
-  [focused figures](../figures/quovar/README.md) additionally runs
+  focused figures (in git history) additionally runs
   `qclt_step_comparison.py` and `amr_battle_test.py`.
 
 The shorter [project README](../README.md) points to current results. This
