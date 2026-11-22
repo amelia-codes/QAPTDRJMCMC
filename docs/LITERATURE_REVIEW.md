@@ -34,8 +34,8 @@ claim being made; adding an entry to the database does not add it to the paper.
 | --- | --- | --- |
 | History-difference proposals | `terbraak2006demc,terbraak2008demcz` | The [original DE-MC paper](https://link.springer.com/article/10.1007/s11222-006-8769-1) introduces population-difference proposals; the 2008 extension uses stored past states. These are the closest classical precedents for our step construction. Our sum of pair contributions should still be defined explicitly. |
 | The scale factor \(2.38^2/d\) | `roberts1997scaling` | [Roberts, Gelman and Gilks (1997)](https://sites.stat.columbia.edu/gelman/research/published/theory7.pdf) derive an asymptotic random-walk Metropolis scaling under target assumptions. This motivates a convention in the experiments, rather than establishing the optimal scale for every test distribution. |
-| SWAP distance-based covariance readout | `lloyd2013distance,buhrman2001fingerprinting` | [Lloyd, Mohseni and Rebentrost (2013), pp. 3–4](https://arxiv.org/pdf/1307.0411), supplies the distance protocol used in `swap_readout_circuit` and `swap_distance_circuit`. [Buhrman et al. (2001)](https://arxiv.org/abs/quant-ph/0102001) supplies the underlying SWAP test. A plain overlap-squared SWAP test would lose the sign of a real covariance; the distance protocol recovers it using known norms. |
-| Hadamard signed-overlap readout | `aharonov2009hadamard` | Section 2.2 of [Aharonov, Jones and Landau](https://arxiv.org/pdf/quant-ph/0511096) describes the real-overlap Hadamard test used by the comparison. Exact centered-column norms restore the covariance scale. |
+| SWAP distance-based covariance readout | `lloyd2013distance,buhrman2001fingerprinting` | [Lloyd, Mohseni and Rebentrost (2013), pp. 3–4](https://arxiv.org/pdf/1307.0411), supplies the distance protocol used in `circuit_costs.swap_test`. [Buhrman et al. (2001)](https://arxiv.org/abs/quant-ph/0102001) supplies the underlying SWAP test. A plain overlap-squared SWAP test would lose the sign of a real covariance; the distance protocol recovers it from norm-weighted states. The comparison measures the trace it needs with a separate pairwise-moment circuit rather than supplying it. |
+| Hadamard signed-overlap readout | `aharonov2009hadamard` | Section 2.2 of [Aharonov, Jones and Landau](https://arxiv.org/pdf/quant-ph/0511096) describes the real-overlap Hadamard test used by the comparison. Variances measured with pairwise-moment circuits restore the covariance scale. |
 | The amplitude-estimation curve currently implemented | `brassard2002amplitude` | [Brassard et al. (2002)](https://arxiv.org/abs/quant-ph/0005055) is the canonical phase-estimation algorithm whose output law `qae_sample` reproduces. The preprint appeared in 2000; the publication year is 2002. |
 | Precision scaling for quantum expectation estimation | `montanaro2015montecarlo,cornelissen2022mean` | [Montanaro (2015)](https://arxiv.org/abs/1504.06987) treats Monte Carlo expectation estimation; [Cornelissen, Hamoudi and Jerbi (2022)](https://arxiv.org/abs/2111.09787) is a stronger reference when discussing vector-valued estimates, dimension, and access models. |
 | Preparing a correlated Gaussian proposal state | `kitaev2008wavefunction,deliyannis2021gaussian` | [Kitaev and Webb (2008)](https://arxiv.org/abs/0801.0342) gives the construction; [Deliyannis et al. (2021)](https://arxiv.org/pdf/2109.10918) gives explicit circuits and resource bounds. This is the most direct quantum proposal-preparation alternative. The latter's Eq. (34), Appendix E, and Appendix F support the shear costs quoted below. |
@@ -165,16 +165,19 @@ run by [`covariance_methods.py`](../covariance_methods.py), scores all 64
 history branches against the **same unrounded physical conditional target**.
 The fixed-grid coin-sum output law has 8.38% mean physical covariance error,
 with a 0.93% sample standard deviation across history branches. The plotted
-readout curves use five selected methods: SWAP, Hadamard, canonical amplitude
-estimation, covariance preparation followed by readout, and pairwise moments.
+readout curves use seven methods: the two Cauchy–Schwarz approximations, SWAP,
+Hadamard, canonical amplitude estimation, covariance preparation followed by
+readout, and pairwise moments.
 Each uses the same rounded histories, continuous-history target, PSD
 projection, and ideal downstream Gaussian loader. Explicit small circuits
 validate the measurement probabilities and the prepared covariance state;
 the numerical experiment samples finite-shot outcomes from these laws.
 
-SWAP and Hadamard receive exact centered-column norms. Covariance preparation
-receives the exact centered trace and prepares the norm-weighted ensemble
-whose density matrix is proportional to the raw sample covariance. Its
+No method receives exact variances, norms or traces. SWAP and Hadamard measure
+the column variances with pairwise-moment circuits. Covariance preparation
+prepares the norm-weighted ensemble whose density matrix is proportional to
+the raw sample covariance, and measures the trace with a pairwise-moment
+circuit on squared pair distances. Its
 finite-shot matrix readout is an added comparison stage, not a step supplied
 by the QPCA paper. This added stage gives nonzero finite-shot error. The
 [figure guide](../README.md) documents the full protocol.
@@ -298,9 +301,9 @@ method bar chart and full error table from the ten-method list in
 
 The bound average is exactly the diagonal approximation: the two signed
 cross-term bounds cancel while the diagonal variances remain. It is
-included once under that requested name. Both bound approximations receive
-exact variances and feed the same ideal Gaussian loader as the readout
-methods. The single-pair step is a direct signed difference, rounded to the
+included once under that requested name. Both bound approximations measure
+the variances with pairwise-moment circuits, within the same 384-shot budget,
+and feed the same ideal Gaussian loader as the other readout methods. The single-pair step is a direct signed difference, rounded to the
 same local grid; it is related to differential-evolution proposals.
 
 The bar chart reports mean error divided by the mean coin sum + AMR error,
