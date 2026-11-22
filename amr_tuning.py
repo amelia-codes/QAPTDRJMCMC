@@ -21,7 +21,6 @@ import amr_battle_test as study
 import paper_style
 
 ROOT = Path(__file__).resolve().parent
-OUT = ROOT / "figures" / "quantum_walk"
 DATA = ROOT / "data" / "quantum_walk" / "amr_tuning.npz"
 HISTORY_SAMPLES = 1000
 REPS = 80
@@ -36,7 +35,7 @@ def refinement_frames(histories):
     principal axis. Width factors give 16, 24, and 32 standard deviations.
     The rotated square uses the largest principal spread for both widths.
     """
-    center, axes, spacing = study.window_from_pilot(histories)
+    center, axes, spacing = study.window_from_history(histories)
     width_frames = [(center, axes, factor * spacing) for factor in WIDTH_FACTORS]
     pooled = histories.reshape(-1, study.D)
     axis_spacing = np.maximum(pooled.std(axis=0, ddof=1) / 4, 1e-6)
@@ -114,41 +113,15 @@ def run():
     plot()
 
 
-def _grouped_errors(names, errors, labels, filename, *, colors=None):
-    fig, ax = plt.subplots(figsize=(9.8, 4.6))
-    x = np.arange(len(names))
-    width = .24
-    if colors is None:
-        colors = paper_style.COMPARISON_COLORS
-    mean = 100 * errors.mean(axis=2)
-    sd = 100 * errors.std(axis=2, ddof=1)
-    for j, (label, color) in enumerate(zip(labels, colors)):
-        ax.bar(x + (j - 1) * width, mean[:, j], width * .92,
-               yerr=sd[:, j], capsize=2.5, color=color, edgecolor=color,
-               linewidth=.7, alpha=paper_style.BAR_ALPHA, label=label,
-               error_kw={"ecolor": paper_style.INK, "elinewidth": 1.0})
-    ax.set_xticks(x, [name.replace("-", "\n") for name in names])
-    ax.set_xlabel("Walk distribution")
-    ax.set_ylabel(r"Covariance error (\%; mean $\pm$ 1 SD)")
-    ax.set_ylim(bottom=0)
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
-    paper_style.legend_below(ax, ncol=3)
-    fig.tight_layout()
-    OUT.mkdir(parents=True, exist_ok=True)
-    fig.savefig(OUT / filename, bbox_inches="tight")
-    plt.close(fig)
-
-
 def plot():
     paper_style.apply()
     with np.load(DATA, allow_pickle=False) as saved:
         names = saved["names"].tolist()
-        _grouped_errors(
+        paper_style.grouped_errors(
             names, saved["width_errors"],
             [rf"Window width $= {width:g}\sigma_j$" for width in saved["widths_in_sd"]],
             "amr_zoom_limit.pdf")
-        _grouped_errors(names, saved["method_errors"], saved["method_labels"].tolist(),
+        paper_style.grouped_errors(names, saved["method_errors"], saved["method_labels"].tolist(),
                         "amr_methods.pdf", colors=(paper_style.COLORS["QCLT"],
                                                    paper_style.COLORS["MEASURED"],
                                                    paper_style.COLORS["QCLT_AMR"]))

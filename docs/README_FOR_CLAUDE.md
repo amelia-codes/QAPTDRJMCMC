@@ -1,5 +1,9 @@
 # Handoff: what was wrong with the earlier “quantum” framework
 
+Historical source filenames in this note refer to the framework before the
+November 2026 cleanup. The current implementation and reading order are in
+[the project README](../README.md).
+
 Read this before modifying the QCLT, AMR, MCMC, or figure code. **The old
 application plots do not demonstrate a fully coherent quantum
 APT + TD + RJ + MCMC algorithm or a quantum speedup.** They are useful classical MCMC
@@ -23,8 +27,8 @@ separate, much smaller study now builds actual coherent QCLT step circuits.
 
 | Code/result | What actually runs | What it establishes |
 | --- | --- | --- |
-| [`tdrjmcmc_qclt.py`](../tdrjmcmc_qclt.py), [`qclt_amr.py`](../qclt_amr.py), and [old application figures](../figures/previous/README.md) | Classical NumPy MCMC. QCLT pair coins and steps are sampled classically. Likelihood, acceptance, birth/death, tempering, history, grid updates, and waveform evaluation are classical. | Performance of a *classical sampler using the QCLT proposal distribution*. A separate circuit check verifies that the proposal law agrees with a Qiskit circuit. |
-| [`qcov.py`](../qcov.py) and [`compact_qclt.py`](../compact_qclt.py) | Qiskit proposal circuits and exact ideal output-law samplers. | One coherent kick or a small coherent walk; no end-to-end MCMC. |
+| `tdrjmcmc_qclt.py`, `qclt_amr.py`, and [old application figures](../figures/previous/README.md) | Classical NumPy MCMC. QCLT pair coins and steps are sampled classically. Likelihood, acceptance, birth/death, tempering, history, grid updates, and waveform evaluation are classical. | Performance of a *classical sampler using the QCLT proposal distribution*. A separate circuit check verifies that the proposal law agrees with a Qiskit circuit. |
+| [`qcov.py`](../qcov.py) and `compact_qclt.py` | Qiskit proposal circuits and exact ideal output-law samplers. | One coherent kick or a small coherent walk; no end-to-end MCMC. |
 | [`quantum_walk_study.py`](../quantum_walk_study.py) and [focused walk figures](../figures/quovar/README.md) | A two-coordinate, three-history coherent walk segment, with no intermediate measurement inside a segment. | History-conditioned step generation. AMR is selected **classically between separate circuits** from pilot measurements. No likelihood or Metropolis acceptance. |
 | `qaptdrjmcmc.ipynb` | A partial circuit with a placeholder likelihood. | It does not implement the full plotted sampler. |
 
@@ -49,7 +53,7 @@ MCMC execution into a coherent quantum sampler.
    numbers used a signed output register one bit too short; see the
    [qubit audit](QUBIT_AUDIT.md).
 2. **The sub-100 result has a different input model.** When the history is a
-   classical NumPy array, [`compact_qclt.py`](../compact_qclt.py) can compile
+   classical NumPy array, `compact_qclt.py` can compile
    its pair differences into gate constants and omit all quantum history
    registers. The resulting 6-bit AMR kick is at most **95 qubits** including
    isotropic coins, with the same proposal law. It must be recompiled if the
@@ -164,7 +168,7 @@ establish that QCLT dominates all common covariance estimators.
 - **The production AMR sampler has extra effects.** It clips stored
   reservoir points that fall outside the moving window and rejects moves
   leaving the window. Those choices can affect mixing. The general
-  [`qclt_amr.py`](../qclt_amr.py) default `K=2d` differs from the five-parameter
+  `qclt_amr.py` default `K=2d` differs from the five-parameter
   wavelet sampler's `K=d+1`: at `d=5`, ten histories mean 45 pairs and 90
   pair coins, already near 100 qubits before output registers.
 
@@ -184,16 +188,16 @@ establish that QCLT dominates all common covariance estimators.
   complete coherent sampler. [`qcov.build_adaptive_walk`](../qcov.py) is a
   separate coherent proposal demonstration, whose snapshots and fresh
   coins grow with the number of steps.
-- The full-grid proposal in [`tdrjmcmc_qclt.py`](../tdrjmcmc_qclt.py) uses raw
+- The full-grid proposal in `tdrjmcmc_qclt.py` uses raw
   phase differences across the periodic seam, while the generic
-  [`qclt_amr.py`](../qclt_amr.py) uses minimal-image differences. This can
+  `qclt_amr.py` uses minimal-image differences. This can
   make full-grid phase kicks unnecessarily large near the seam. The
   compact-circuit equality test preserves each sampler's existing
   convention; it does not resolve that modeling difference.
 
-The early covariance notebooks and [`amelia.py`](../amelia.py) also had
+The early covariance notebooks and `amelia.py` also had
 statistical and bookkeeping problems. The corrected
-[`cov_methods.py`](../cov_methods.py) documents them: an inner product
+`cov_methods.py` documents them: an inner product
 `trace(C_est^H C_true)` was called an error; a zero-mean covariance estimate
 missed its `1/(N-1)` normalization; two independently generated datasets
 were used to test a cross covariance whose truth was then zero; a weighted
@@ -247,7 +251,7 @@ quantum runtime or query-complexity claims.
   task. State whether the metric is conditional or averaged over histories,
   and whether the comparison includes sampling noise, grid error, and
   loader/oracle costs. Show AMR failure regimes, not only favorable pilots.
-- Preserve the useful tests: [`test_compact_qclt.py`](../test_compact_qclt.py)
+- Preserve the useful tests: `test_compact_qclt.py`
   checks exact kick-law equality, and
   [`test_quantum_walk_study.py`](../test_quantum_walk_study.py) checks the
   compressed coherent history against explicit snapshots. Reproducing the

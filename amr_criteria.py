@@ -12,7 +12,6 @@ import sys
 import numpy as np
 
 import amr_battle_test as study
-from amr_tuning import _grouped_errors
 import paper_style
 
 ROOT = Path(__file__).resolve().parent
@@ -84,8 +83,8 @@ def run():
                 # circuit. Each history sample retains its finite pilot-grid
                 # rounding. The two sample sets are independent.
                 after = study.X0 + scale * (after - study.X0)
-                current = study.window_from_pilot(before)
-                proposed = study.window_from_pilot(after)
+                current = study.window_from_history(before)
+                proposed = study.window_from_history(after)
                 old_spacing[case_index, scenario_index, replicate] = current[2]
                 proposed_spacing[case_index, scenario_index, replicate] = proposed[2]
                 new_modes = scale * modes
@@ -138,9 +137,9 @@ def plot():
         names = saved["names"].tolist()
         labels = [rf"Width-change threshold $= {100 * threshold:g}\%$"
                   for threshold in saved["thresholds"]]
-        _grouped_errors(names, saved["errors"][:, 0], labels,
+        paper_style.grouped_errors(names, saved["errors"][:, 0], labels,
                         "amr_refinement_criterion.pdf")
-        _grouped_errors(names, saved["errors"][:, 1], labels,
+        paper_style.grouped_errors(names, saved["errors"][:, 1], labels,
                         "amr_unrefinement_criterion.pdf")
 
 

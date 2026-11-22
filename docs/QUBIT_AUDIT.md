@@ -1,5 +1,9 @@
 # QCLT qubit audit
 
+Historical source filenames in this note refer to the framework before the
+November 2026 cleanup. The current implementation and reading order are in
+[the project README](../README.md).
+
 ## What is being counted
 
 `tdrjmcmc_qclt.py` and `qclt_amr.py` run classical Metropolis samplers. Their
