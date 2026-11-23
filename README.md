@@ -1,10 +1,15 @@
 # Quovar
 
-Quovar builds a coherent random-walk step whose covariance follows the walk's
-own history, the **covariance-scaled coin sum** (called QCLT in earlier
-versions), and studies how adaptive register grids (classical and quantum
-AMR) change its accuracy. The examples use two coordinates, three history
-positions and 8-bit position registers (33 logical qubits).
+Quovar builds coherent random-walk steps whose covariance follows the walk's
+own history, and studies how quantum adaptive mesh refinement (quantum AMR),
+which refines each branch's register grid inside the circuit, changes their
+accuracy. There are two proposed steps: the
+**covariance-scaled coin sum** (called QCLT in earlier versions) and the
+**single random pair**. Both read the history straight from the walk's own
+coins, so neither needs a measurement or classical computation between steps.
+The examples use two coordinates, three history samples and 8-bit position
+registers: 33 logical qubits for the coin sum and 31 for the single random
+pair, plus 2 with quantum AMR.
 
 ## Run it
 
@@ -12,8 +17,9 @@ Use Python 3.12 with the packages in `requirements.txt`. The figures need LaTeX
 with Computer Modern fonts. Run from the repository root.
 
 ```bash
-python3.12 generate_paper_figures.py              # recompute everything (about 2 minutes), then plot
+python3.12 generate_paper_figures.py              # recompute everything (about 7 minutes), then plot
 python3.12 generate_paper_figures.py --plot-only  # redraw from the saved data
+python3.12 generate_paper_figures.py --classical-amr  # also show classical and hybrid AMR
 python3.12 -m unittest                            # check the circuits and measurement laws
 ```
 
@@ -26,122 +32,190 @@ figures' LaTeX sources in `figures/methods/`.
 
 | File | Contents |
 | --- | --- |
-| [`walk.py`](walk.py) | The setting, integer adders, the walk circuit, its exact sampler, the pilot walk, the classical AMR window and quantum AMR |
-| [`covariance_methods.py`](covariance_methods.py) | The eleven next-step methods, the comparison at 384 shots with and without classical AMR, the readout-budget sweep, and the error table |
-| [`clt_convergence.py`](clt_convergence.py) | Repeated coin-sum steps converging to a Gaussian |
-| [`amr.py`](amr.py) | Fixed grids versus classical and quantum AMR, classical AMR window widths and axes, and window-rebuild thresholds on seven geometries |
+| [`walk.py`](walk.py) | The setting, integer adders, the walk circuit with either proposed step, its exact sampler, quantum AMR's refinement of any base grid, and the pilot walk and window of the optional classical AMR |
+| [`covariance_methods.py`](covariance_methods.py) | The next-step methods on the fixed local grid and with quantum AMR at 384 shots, the readout-budget sweep, and the error table |
+| [`clt_convergence.py`](clt_convergence.py) | Repeated steps of both proposed methods, with quantum AMR, converging to a Gaussian |
+| [`random_pairs.py`](random_pairs.py) | How many random pairs a step should draw: error, Gaussianity, qubits and gates for 1 to 6 draws |
+| [`amr.py`](amr.py) | The coin sum's grids on seven geometries; with `--classical-amr`, also classical and hybrid AMR and classical AMR's window choices |
 | [`circuit_costs.py`](circuit_costs.py) | Explicit circuits for the readout methods and the qubit-count table |
-| [`plot_style.py`](plot_style.py) | Shared fonts, colours and legend placement |
-| [`circuit_diagrams.py`](circuit_diagrams.py), [`figures/methods/`](figures/methods/README.md) | Pseudocode, a flowchart, the circuit and its subcircuits for every method, as `\input`-able LaTeX |
+| [`plot_style.py`](plot_style.py) | Shared fonts, colours, legend placement, and the `--classical-amr` switch |
+| [`circuit_diagrams.py`](circuit_diagrams.py), [`figures/methods/`](figures/methods/README.md) | Pseudocode, a flowchart, the circuit and its subcircuits for every method, as LaTeX drawings to `\input` into your own floats |
 | [`test_walk.py`](test_walk.py), [`test_covariance_methods.py`](test_covariance_methods.py) | Checks that circuits match the laws and formulas the experiments use |
 
 ## The walk
 
-The walker takes K = 3 preparatory steps; its positions $h_1,\ldots,h_K$ are
-the history. Each pair of history positions contributes $r_{ab}(h_a-h_b)$,
-where $r_{ab}$ is $-1$, $0$ or $+1$ with probabilities $q/2$, $1-q$ and $q/2$.
-Since
+The notation follows the paper. The walker starts at $\xi^{(0)}$ and takes
+N = 3 preparatory steps in d = 2 coordinates; its positions
+$\xi^{(1)},\ldots,\xi^{(N)}$ are the history, with sample covariance
+$\hat\Sigma_N$. Each pair of history samples contributes
+$R_{ab}(\xi^{(a)}-\xi^{(b)})$, where the lazy coin $R_{ab}$ is $-1$, $0$ or $+1$
+with probabilities $q/2$, $1-q$ and $q/2$. Since
 
 $$
-\sum_{a<b}(h_a-h_b)(h_a-h_b)^T=K(K-1)S_h,
+\sum_{a<b}(\xi^{(a)}-\xi^{(b)})(\xi^{(a)}-\xi^{(b)})^T=N(N-1)\hat\Sigma_N,
 $$
 
-choosing $q=\alpha/[K(K-1)]$ gives step covariance $\alpha S_h$. A small
-independent $\pm1$ step keeps the covariance positive definite.
+choosing $q=\gamma^2/[N(N-1)]$ gives step covariance $\gamma^2\hat\Sigma_N$, with
+$\gamma^2=2.38^2/d$. A small independent $\pm1$ step of variance $\nu$ per
+coordinate keeps the covariance positive definite.
 
-The preparatory sign coins determine the whole history, so the circuit adds
-each pair difference straight from those coins and never stores the history.
+The single random pair instead adds one pair difference, chosen uniformly,
+with a Rademacher sign $R$. A uniformly chosen pair difference has covariance
+$2\hat\Sigma_N$ on average, so the step needs a scale of $\gamma/\sqrt2$.
+A probability can't supply it, because $\gamma^2/2>1$ for $d=2$, so the circuit
+scales the displacement modes by $\gamma/\sqrt2$ and rounds them to the grid.
+Its covariance is $\gamma^2\hat\Sigma_N$ up to that rounding. With $K\ge2$
+lazy draws, each moving with probability $\gamma^2/(2K)$, no scaling is needed
+and the covariance is exact (`random_pairs.py`).
+
+The preparatory sign coins determine the whole history, so both circuits add
+pair differences straight from those coins and never store the history. The
+single random pair adds each history increment once, controlled on a flag that
+is set when the increment lies inside the drawn pair.
 This compression relies on the history being generated by known coins; it does
 not apply to an arbitrary unknown quantum history.
 
-Every gate is a fresh coin (H or RY on $|0\rangle$) or a controlled X, which
-only permutes basis states. Measuring the circuit is therefore equivalent to
+Every gate is a fresh coin (H or RY on $|0\rangle$, or a state preparation of
+the pair index on fresh qubits) or a controlled X, possibly with open controls,
+which only permutes basis states. Measuring the circuit is therefore equivalent to
 drawing the coins at random and applying the gates to bits, which is how
 `walk.sample_circuit` simulates it exactly. The same fact means the walk has no
 interference and offers no quantum speedup over classical sampling.
 
-Classical AMR measures histories from a coarse 6-bit pilot circuit, then chooses the
-next circuit's grid: centred on their mean, aligned with their principal axes,
-with the 256 cells spanning 16 standard deviations. The choice is classical
-and happens between circuits.
+## Grids
 
-Quantum AMR makes the choice inside the circuit instead, with no pilot and no
-measurement. With two coins per step, a branch's path length in each
-coordinate depends only on how many of its K preparatory steps have
-disagreeing coins. A 2-qubit counter holds that number. Each coordinate then
-uses the finest power-of-two refinement of the fixed local grid at which the
-branch's history and pair differences stay within half the register. The
-mode constants for every refinement are compiled in, and adders controlled
-on the counter's bits select them. The walk needs 35 qubits instead of 33 and
+Every method runs on the fixed local grid, 256 cells across 0.08 around the
+start, and with quantum AMR, which refines that grid inside the circuit.
+
+Quantum AMR needs no pilot run and no measurement. With two coins per step, a
+branch's path length in each coordinate depends only on how many of its N
+preparatory steps have disagreeing coins. A 2-qubit counter holds that number.
+Each coordinate then uses the finest power-of-two refinement of the fixed local
+grid at which the branch's history and pair differences stay within half the
+register. The mode constants for every refinement are compiled in, and adders
+controlled on the counter's bits select them. The walk needs 2 more qubits and
 is still sampled exactly.
 
 Most of quantum AMR's gain comes from refining at all. On the tilted geometry
 every branch fits two levels finer than the local grid, and that fixed
 refinement alone gives 2.8% mean error per history. Refining each branch
-separately lowers this to 2.4%. Like the classical AMR window, the refinement
-table depends on the known modes.
+separately lowers this to 2.4%. The refinement table depends on the known modes.
 
-## The eleven comparison methods
+Quantum AMR is the default wherever one grid is shown: the main method chart
+and table, the readout-budget sweep, the convergence experiment and the
+comparison of random-pair draws (`covariance_methods.MAIN_GRID`).
+
+### Classical and hybrid AMR (`--classical-amr`)
+
+The experiments also compute two more grids, which every figure, table and
+method drawing leaves out unless `--classical-amr` is given:
+
+```bash
+python3.12 generate_paper_figures.py --plot-only --classical-amr
+```
+
+| Grid | Pilot run | In-circuit refinement |
+| --- | --- | --- |
+| Classical AMR | Yes | No |
+| Hybrid AMR | Yes | Yes, of the classical AMR window |
+
+Classical AMR measures histories from a coarse 6-bit pilot circuit, then
+chooses the next circuit's grid: centred on their mean, aligned with their
+principal axes, with the 256 cells spanning 16 standard deviations. The
+choice is classical and happens between circuits. Hybrid AMR refines a
+classical AMR window the way quantum AMR refines the local grid, along the
+window's axes. Both use the same 40 windows, each chosen from 1,000 pilot
+histories.
+
+Classical AMR alone helps the coin sum, the single random pair and the
+Hadamard test, but at this budget hurts SWAP, amplitude estimation and
+covariance preparation. Hybrid AMR is at most slightly better than quantum AMR
+(1.97% against 2.38% for the coin sum, 1.84% against 2.20% for the single
+random pair) but needs a pilot run and a new circuit for every window. On the
+seven geometries, classical AMR helps the five a fixed local grid resolves
+poorly and is worse on the two it already resolves almost exactly; hybrid AMR
+beats quantum AMR on five, but not on those two, where quantum AMR's error is
+almost zero.
+
+With the flag, the drawings in `figures/methods/` show classical AMR as an
+optional, dashed stage after the readout. In the paper, define
+`\qvClassicalAMR` in the preamble to get the same (see
+[`figures/methods/README.md`](figures/methods/README.md)).
+
+## The comparison methods
 
 All are scored by the relative error of their next-step covariance against
-the same continuous-history target, on all 64 histories. Every method is a
-quantum circuit, in `walk.py` or `circuit_costs.py`.
+the same continuous-history target, on all 64 histories, on the fixed local
+grid and with quantum AMR. Every method is a quantum circuit, in `walk.py` or
+`circuit_costs.py`.
 
 | Method | What it does |
 | --- | --- |
-| Coin sum + quantum AMR | The coin-sum step on each branch's own refinement of the fixed local grid, chosen inside the circuit |
-| Coin sum + classical AMR | The coin-sum step on 40 classical AMR windows, each chosen from 1,000 pilot histories |
-| Coin sum, fixed local grid | The same step on a fixed 8-bit grid around the start |
+| Covariance-scaled coin sum | The coin-sum step |
 | Cauchy–Schwarz upper bound | Measured variances; every correlation set to +1 |
 | Cauchy–Schwarz upper/lower average | Measured variances; correlations set to 0 (the diagonal covariance) |
-| Single history-pair difference | One uniformly chosen signed pair difference, scaled by $\sqrt{\alpha/2}$ and rounded |
-| Pairwise moments | Finite-shot estimates of centred pair-difference products |
+| Single random pair | One uniformly chosen pair difference with a Rademacher sign, from modes scaled by $\gamma/\sqrt2$ and rounded |
 | SWAP test | Signed-distance overlap of the centred columns, plus measured variances |
 | Hadamard test | Signed real overlap of the centred columns, plus measured variances |
-| Amplitude estimation | Canonical phase estimation of the pairwise moments; 381 oracle calls |
+| Amplitude estimation | Canonical phase estimation of the pair-product means; 381 oracle calls |
 | Covariance matrix preparation + readout | The state $S/\operatorname{tr}S$ (Gordon et al. 2022), read out with finite shots, plus a measured trace |
 
 The two Cauchy–Schwarz readouts are still computed, saved and tested, but are
 left out of every figure and table (`covariance_methods.SHOWN`).
 
-A second chart runs every method on the same 40 classical AMR windows: the history is
-rounded onto each window's grid, the method works in that grid's units, and
-its step is mapped back to physical coordinates; quantum AMR, which only the
-coin sum uses, is not in this chart. Classical AMR helps the coin sum, the
-single pair, pairwise moments and the Hadamard test. At this budget it hurts
-SWAP, amplitude estimation and covariance preparation.
+On each grid the history is rounded onto that grid (each branch's own, with
+quantum AMR), the method works in its units, and its step is mapped back to
+physical coordinates. A readout with quantum AMR reads the history from the
+walk's refined register.
 
-The coin sums and the single pair output a step. They are scored by the exact
-covariance of that step, which the tests check against their circuits.
+The main chart and table show every method with quantum AMR; an appendix chart
+shows every method on the fixed local grid and with quantum AMR. Quantum AMR
+improves every method on the fixed grid. With it, the single random pair has
+the lowest mean error (2.20% against the coin sum's 2.38%), but its error varies
+more between histories, and on the fixed grid its rounded modes make it worse
+than the coin sum (11.80% against 8.38%).
 
-The seven readout methods output covariance entries, not a step. Each gets
+The coin sum and the single random pair output a step. They are scored by the
+exact covariance of that step, which the tests check against their circuits,
+shot by shot for the single random pair. Repeated single-random-pair steps
+start further from Gaussian than coin-sum steps and catch up by about 10
+summed steps. A single draw is also the cheapest per step (7 qubits and about
+88,000 CX gates with quantum AMR, against 10 and 137,000 for the coin sum). Two
+draws are as Gaussian per step as the coin sum but cost more, and more draws
+only add cost, because the expected number of moving pairs stays $\gamma^2/2$.
+
+The six readout methods output covariance entries, not a step. Each gets
 384 shots (or oracle calls), split over its circuits, and measures everything
 it uses: no variance, norm or trace is supplied. Cauchy–Schwarz, SWAP and
-Hadamard measure the two variances with the pairwise-moment circuit, and
-covariance preparation measures its trace with one. The estimate then feeds an
+Hadamard measure the two variances with the pair-product circuit, which
+estimates the mean of the pair products
+$(\xi^{(i)}-\xi^{(j)})_k(\xi^{(i)}-\xi^{(j)})_l/2$; covariance preparation
+measures its trace with one, and amplitude estimation runs it as its state
+preparation. The estimate then feeds an
 ideal Gaussian step loader, which a real device would also have to implement.
 Equal shot counts are not equal gate counts or run times.
 
 All error bars and bands show mean ± one sample standard deviation (`ddof=1`)
-across histories, windows or repetitions, not standard errors. A lower whisker
-can extend below zero for skewed errors; logarithmic axes clip that part at the
-visible axis boundary. Each covariance method uses the same colour in all plots.
+across histories, repetitions or (with `--classical-amr`) windows, not standard errors. A lower whisker
+can extend below zero for skewed errors; the two method bar charts have linear
+axes that clip it at zero, and logarithmic axes clip it at the visible axis
+boundary. Each covariance method uses the same colour in all plots.
 
 ## Caveats
 
 - The readout methods' measurement laws are sampled directly; the tests check
   them against the explicit circuits in `circuit_costs.py`.
-- The readout and single-pair circuits are compiled from the history they read,
-  the usual data-loading assumption: a readout needs many shots on one fixed
-  history. The coin sum instead adds the pair differences straight from the
-  walk's own coins.
-- A walk with $N$ coin-sum steps uses $23+10N$ working qubits. The convergence
-  experiment also uses two 14-bit record registers to read the summed step
-  across position wraparound: 211 qubits at $N=16$. The 33-qubit count applies
-  to one step without records; quantum AMR adds 2.
-- Classical AMR helps the five geometries a fixed local grid resolves poorly,
-  and is worse on the two it already resolves almost exactly. Quantum AMR is
-  better than both the local grid and classical AMR on all seven.
+- The readout circuits are compiled from the history they read, the usual
+  data-loading assumption: a readout needs many shots on one fixed history.
+  The coin sum and the single random pair instead add the pair differences
+  straight from the walk's own coins.
+- A walk with $L$ steps uses $23+10L$ working qubits for the coin sum and
+  $24+7L$ for the single random pair, and quantum AMR adds a 2-qubit counter.
+  The convergence experiment, with quantum AMR, also uses two 16-bit record
+  registers to read the summed step across position wraparound: 217 and 170
+  qubits at $L=16$. The 33- and 31-qubit counts apply to one step without
+  records.
+- Quantum AMR is better than the fixed local grid on all seven geometries.
 
 ## Documents
 

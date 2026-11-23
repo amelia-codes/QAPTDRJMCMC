@@ -9,27 +9,29 @@ from unittest.mock import patch
 
 import numpy as np
 from qiskit import QuantumCircuit, QuantumRegister
+from qiskit.circuit.library import StatePreparation
 from qiskit.quantum_info import Statevector
 
 from amr import CASES, fits, step_covariance
-from walk import (BITS, D, ISO_VAR, K, MODES, PAIRS, SCALE2, X0, add_const, add_signed, all_histories,
-                  amr_window, lazy_coin, make_walk, pilot_histories, quantum_amr_modes,
-                  quantum_amr_step_covariance, read, run_walk, sample_circuit, to_grid)
+from walk import (BITS, D, GAMMA2, ISO_VAR, MODES, N, PAIRS, UNIFORM_PAIRS, XI0, add_const, add_signed,
+                  all_histories, amr_window, disagreements, lazy_coin, make_walk, pilot_histories,
+                  quantum_amr_modes, quantum_amr_step_covariances, random_pair_covariance, random_pair_draws,
+                  read, run_walk, sample_circuit, scaled_modes, to_grid)
 
 
 # The 6-bit pilot grid, with the start and the modes rounded onto it
-GRID_6 = (X0, np.eye(D), np.full(D, .08 / 64))
-START_6 = to_grid(X0, GRID_6, 6)
+GRID_6 = (XI0, np.eye(D), np.full(D, .08 / 64))
+START_6 = to_grid(XI0, GRID_6, 6)
 MODES_6 = np.rint(MODES / GRID_6[2]).astype(int)
 
 
 # Reference circuit: copy each history position into its own registers, then add every
 # pair difference from those copies
 def stored_history_walk(bits, start, grid_modes):
-    # Registers, including K copies of the position
+    # Registers, including N copies of the position
     position = [QuantumRegister(bits, f"position_{p}") for p in range(D)]
-    history = [[QuantumRegister(bits, f"history_{t}_{p}") for p in range(D)] for t in range(K)]
-    prep = QuantumRegister(K * D, "preparation_signs")
+    history = [[QuantumRegister(bits, f"history_{t}_{p}") for p in range(D)] for t in range(N)]
+    prep = QuantumRegister(N * D, "preparation_signs")
     move, sign = QuantumRegister(len(PAIRS), "pair_move"), QuantumRegister(len(PAIRS), "pair_sign")
     iso_move, iso_sign = QuantumRegister(D, "iso_move"), QuantumRegister(D, "iso_sign")
     qc = QuantumCircuit(*position, *sum(history, []), prep, move, sign, iso_move, iso_sign)
@@ -37,7 +39,7 @@ def stored_history_walk(bits, start, grid_modes):
     # Start, then take each preparatory step and copy the new position
     for p in range(D):
         add_const(qc, position[p], int(start[p]))
-    for t in range(K):
+    for t in range(N):
         for m in range(D):
             qc.h(prep[t * D + m])
             for p in range(D):
@@ -47,9 +49,9 @@ def stored_history_walk(bits, start, grid_modes):
             for qubit, copy in zip(position[p], history[t][p]):
                 qc.cx(qubit, copy)
 
-    # Add r_ab (h_a - h_b) bit by bit from the stored copies
+    # Add R_ab (xi^(a) - xi^(b)) bit by bit from the stored copies
     for j, (a, b) in enumerate(PAIRS):
-        lazy_coin(qc, SCALE2 / (K * (K - 1)), move[j], sign[j])
+        lazy_coin(qc, GAMMA2 / (N * (N - 1)), move[j], sign[j])
         for p in range(D):
             for bit in range(bits):
                 add_signed(qc, position[p], 1 << bit, sign[j], [move[j], history[a][p][bit]])
@@ -81,7 +83,7 @@ class WalkTests(unittest.TestCase):
         np.testing.assert_array_equal(final, read(b, reference, position))
 
         # Decoded histories agree with the stored copies
-        history, _ = run_walk(6, GRID_6, 512, 4242)
+        history, _, _ = run_walk(6, GRID_6, 512, 4242)
         np.testing.assert_array_equal(history, np.stack([read(b, reference, row) for row in stored], axis=1))
 
         # The record holds exactly the step that the position register took
@@ -102,17 +104,17 @@ class WalkTests(unittest.TestCase):
     def test_exact_covariance_is_the_average_over_all_histories(self):
         signs, _ = all_histories()
         histories = np.cumsum(signs @ MODES_6, axis=1)
-        lattice = SCALE2 * np.mean([np.cov(h.T) for h in histories], axis=0) + ISO_VAR * np.eye(D)
+        lattice = GAMMA2 * np.mean([np.cov(h.T) for h in histories], axis=0) + ISO_VAR * np.eye(D)
         basis = np.diag(GRID_6[2])
         np.testing.assert_allclose(step_covariance(MODES, GRID_6), basis @ lattice @ basis.T)
 
-    # On each geometry's AMR grid, 30,000 sampled steps match the exact covariance
+    # On each geometry's classical AMR window, 30,000 sampled steps match the exact covariance
     def test_sampled_steps_match_exact_covariance_on_amr_grids(self):
         for c, (name, modes, width) in enumerate(CASES):
             grid = amr_window(pilot_histories(modes, width, 1000, seed=300 + c))
             self.assertTrue(fits(modes, grid, all_histories(modes)[1]), name)
 
-            _, step = run_walk(BITS, grid, 30_000, 400 + c, modes, record_bits=14)
+            _, step, _ = run_walk(BITS, grid, 30_000, 400 + c, modes, record_bits=14)
             center, axes, spacing = grid
             physical = (step * spacing) @ axes.T
 
@@ -138,7 +140,7 @@ class WalkTests(unittest.TestCase):
 
             # The counter holds each shot's number of disagreeing coin pairs
             bits = sample_circuit(qc, 30_000, 500 + c)
-            coins = bits[[qc.find_bit(q).index for q in prep]].T.reshape(-1, K, D)
+            coins = bits[[qc.find_bit(q).index for q in prep]].T.reshape(-1, N, D)
             shot_n = np.sum(coins[..., 0] != coins[..., 1], axis=1)
             np.testing.assert_array_equal(read(bits, qc, [counter])[:, 0], shot_n)
 
@@ -149,9 +151,24 @@ class WalkTests(unittest.TestCase):
 
             # Steps in physical units, each on its shot's grid, match the exact covariance
             physical = step * spacing / 2.0 ** levels[shot_n]
-            exact = np.mean([quantum_amr_step_covariance(s, modes, spacing) for s in signs], axis=0)
+            exact = quantum_amr_step_covariances((XI0, np.eye(D), spacing), modes).mean(axis=0)
             sampled = physical.T @ physical / len(physical)
             self.assertLess(np.linalg.norm(sampled - exact) / np.linalg.norm(exact), .05, name)
+
+    # run_walk with quantum AMR, from the local grid (quantum AMR) and from a rotated classical AMR
+    # window (hybrid AMR): every shot's grid is the base grid refined by a power of two, and
+    # 30,000 sampled steps match the exact covariance
+    def test_run_walk_with_quantum_and_hybrid_amr(self):
+        window = amr_window(pilot_histories(MODES, .08, 1000, seed=300))
+        for seed, grid in enumerate([(XI0, np.eye(D), np.full(D, .08 / 256)), window]):
+            center, axes, base = grid
+            _, step, spacing = run_walk(BITS, grid, 30_000, 600 + seed, record_bits=14, quantum_amr=True)
+            self.assertTrue(np.all(np.isin(np.log2(base / spacing), np.arange(13))))
+
+            physical = (step * spacing) @ axes.T
+            exact = quantum_amr_step_covariances(grid).mean(axis=0)
+            sampled = physical.T @ physical / len(physical)
+            self.assertLess(np.linalg.norm(sampled - exact) / np.linalg.norm(exact), .05, seed)
 
     # The coin sampler reproduces a small circuit's exact statevector probabilities
     def test_sampler_matches_statevector(self):
@@ -163,6 +180,63 @@ class WalkTests(unittest.TestCase):
         outcomes = (sample_circuit(qc, 50_000, 240) * (1 << np.arange(4))[:, None]).sum(axis=0)
         observed = np.bincount(outcomes, minlength=16) / len(outcomes)
         self.assertLess(np.abs(observed - Statevector.from_instruction(qc).probabilities()).sum(), .015)
+
+    # A prepared index register and open-controlled X gates, against the statevector
+    def test_sampler_handles_joint_coins_and_open_controls(self):
+        qc = QuantumCircuit(5)
+        qc.append(StatePreparation(UNIFORM_PAIRS), [0, 1])
+        qc.h(2)
+        for state in range(4):
+            qc.mcx([0, 1], 3, ctrl_state=state)
+        qc.mcx([0, 1, 2], 4, ctrl_state=0b101)
+        qc.cx(2, 3, ctrl_state=0)
+
+        outcomes = (sample_circuit(qc, 50_000, 241) * (1 << np.arange(5))[:, None]).sum(axis=0)
+        observed = np.bincount(outcomes, minlength=32) / len(outcomes)
+        self.assertLess(np.abs(observed - Statevector.from_instruction(qc).probabilities()).sum(), .015)
+
+    # Random pairs with 1, 2 and 3 draws, with quantum AMR: every shot records exactly the step its
+    # coins give, each pair index is uniform over the pairs, and the sampled covariance matches the
+    # exact one
+    def test_random_pair_walks(self):
+        spacing = np.full(D, .08 / 256)
+        levels, grid_modes = quantum_amr_modes(MODES, spacing)
+        start = np.full(D, 1 << (BITS - 1))
+        for seed, spec in enumerate(random_pair_draws(draws) for draws in (1, 2, 3)):
+            step_modes = scaled_modes(MODES, spacing, levels, spec[2])
+            qc, record, prep, _ = make_walk(BITS, start, grid_modes, record_bits=14, random_pairs=spec[:2],
+                                            step_modes=step_modes)
+            bits = sample_circuit(qc, 20_000, 700 + seed)
+            registers = {register.name: register for register in qc.qregs}
+            value = lambda name: read(bits, qc, [registers[name]])[:, 0]
+
+            # The history each shot's step modes give, from its preparatory coins
+            signs = 1 - 2 * bits[[qc.find_bit(q).index for q in prep]].T.reshape(-1, N, D).astype(int)
+            g = disagreements(signs)
+            history = np.cumsum(np.einsum("stm,smp->stp", signs, step_modes[g]), axis=1)
+
+            # Each draw adds u R (history[A] - history[B]), then the isotropic step
+            expected = np.zeros((len(g), D), dtype=int)
+            for k in range(spec[0]):
+                index = value(f"pair_index_{k}")
+                self.assertLess(np.abs(np.bincount(index, minlength=4) / len(index) - UNIFORM_PAIRS**2).max(), .01)
+                a, b = np.array(PAIRS)[index].T
+                r = 1 - 2 * ((value("pair_sign") >> k) & 1)
+                u = (value("pair_move") >> k) & 1 if spec[1] < 1 else 1
+                expected += (u * r)[:, None] * (history[np.arange(len(g)), a] - history[np.arange(len(g)), b])
+            for p in range(D):
+                expected[:, p] += ((value("iso_move") >> p) & 1) * (1 - 2 * ((value("iso_sign") >> p) & 1))
+            np.testing.assert_array_equal(read(bits, qc, record, signed=True), expected)
+
+            # Sampled against exact covariance, in physical units on each shot's grid
+            shot_spacing = spacing / 2.0 ** levels[g]
+            physical = read(bits, qc, record, signed=True) * shot_spacing
+            all_signs = all_histories()[0]
+            exact = np.mean([np.diag(spacing / 2.0 ** levels[n]) @ random_pair_covariance(s, step_modes[n], spec)
+                             @ np.diag(spacing / 2.0 ** levels[n])
+                             for s, n in zip(all_signs, disagreements(all_signs))], axis=0)
+            sampled = physical.T @ physical / len(physical)
+            self.assertLess(np.linalg.norm(sampled - exact) / np.linalg.norm(exact), .05, spec)
 
     # H after H would interfere, which the sampler cannot represent, so it must refuse
     def test_sampler_rejects_interference(self):

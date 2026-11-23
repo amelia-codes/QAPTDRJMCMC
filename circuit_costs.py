@@ -4,9 +4,10 @@
 # where those laws come from. test_covariance_methods.py checks each circuit's outcome
 # probability against its law, and write_table counts their qubits for figures/method_costs.tex.
 #
-# Each circuit is compiled from the history it reads (its data loading). The estimates use
+# Each readout circuit is compiled from the history it reads (its data loading). The estimates use
 # measured outcomes only: every variance, norm or trace a readout needs comes from a
-# pairwise-moment circuit, not from the classical data.
+# pair-product circuit, not from the classical data. The two proposed steps, the coin sum and the
+# single random pair, are walk circuits (walk.make_walk) and need no data loading.
 #
 #   python3.12 circuit_costs.py    # write figures/method_costs.tex
 
@@ -18,7 +19,7 @@ from qiskit.circuit.library import QFT, GroverOperator, RYGate, StatePreparation
 
 import plot_style as style
 from covariance_methods import METHODS, READOUTS, SETTINGS, SHOTS, SHOWN, pair_products, phase_states
-from walk import BITS, D, ISO_VAR, K, MODES, SCALE2, add_signed, lazy_coin, make_walk, quantum_amr_modes
+from walk import BITS, D, LOCAL_GRID, MODES, N, SINGLE_RANDOM_PAIR, make_walk, quantum_amr_modes, scaled_modes
 
 
 # Centred columns p and q, zero-padded to a power of two, normalised; and their norms
@@ -74,15 +75,16 @@ def swap_test(history, p=0, q=1):
 
 
 # Covariance matrix preparation (Gordon et al. 2022): prepare the rows of the centred history
-# with weights |row|^2, so the coordinate qubits hold rho = S / tr(S). Returns the circuit and rho.
-# The normalisation discards tr(S); the readout measures it with a pairwise-moment circuit.
+# with weights |row|^2, so the coordinate qubits hold rho = Sigma_N / tr(Sigma_N). Returns the
+# circuit and rho. The normalisation discards tr(Sigma_N); the readout measures it with a
+# pair-product circuit.
 def covariance_preparation(history):
     centered = history - history.mean(axis=0)
-    k, d = centered.shape
-    data_bits, index_bits = max(1, (d - 1).bit_length()), (k - 1).bit_length()
+    N, d = centered.shape
+    data_bits, index_bits = max(1, (d - 1).bit_length()), (N - 1).bit_length()
 
     amplitudes = np.zeros((1 << index_bits, 1 << data_bits))
-    amplitudes[:k, :d] = centered
+    amplitudes[:N, :d] = centered
 
     data, index = QuantumRegister(data_bits, "coordinate"), QuantumRegister(index_bits, "history")
     qc = QuantumCircuit(data, index)
@@ -94,17 +96,17 @@ def covariance_preparation(history):
     return qc, centered.T @ centered / norm**2
 
 
-# Pairwise moment: a uniform superposition over ordered pairs (i, j) of history positions, then
+# Pair-product circuit: a uniform superposition over ordered pairs (i, j) of history samples, then
 # an ancilla rotation that makes P(1) the mean of values[i, j], rescaled into [0, 1]. The readouts
 # load products of pair differences (covariance_methods.pair_products), whose mean needs no centring.
-def pairwise_moment(values):
-    k = len(values)
-    bits = (k - 1).bit_length()
+def pair_product_circuit(values):
+    N = len(values)
+    bits = (N - 1).bit_length()
     first, second, ancilla = QuantumRegister(bits, "i"), QuantumRegister(bits, "j"), QuantumRegister(1, "value")
     qc = QuantumCircuit(first, second, ancilla)
 
-    # Uniform superposition over the k real indices in each register
-    uniform = np.pad(np.full(k, 1 / np.sqrt(k)), (0, (1 << bits) - k))
+    # Uniform superposition over the N real indices in each register
+    uniform = np.pad(np.full(N, 1 / np.sqrt(N)), (0, (1 << bits) - N))
     for register in (first, second):
         qc.append(StatePreparation(uniform), register)
 
@@ -112,7 +114,7 @@ def pairwise_moment(values):
     lo, hi = values.min(), values.max()
     if hi == lo:
         return qc, 0.
-    for i, j in itertools.product(range(k), repeat=2):
+    for i, j in itertools.product(range(N), repeat=2):
         probability = (values[i, j] - lo) / (hi - lo)
         if probability:
             rotation = RYGate(2 * np.arcsin(np.sqrt(probability))).control(2 * bits, ctrl_state=i + (j << bits))
@@ -121,10 +123,10 @@ def pairwise_moment(values):
     return qc, float((values.mean() - lo) / (hi - lo))
 
 
-# Canonical amplitude estimation of the pairwise-moment probability; the phase register is
+# Canonical amplitude estimation of the pair-product probability; the phase register is
 # the last `phase_bits` qubits
 def amplitude_estimation(values, phase_bits):
-    preparation, probability = pairwise_moment(values)
+    preparation, probability = pair_product_circuit(values)
 
     # Grover operator that marks the ancilla's 1 outcome
     oracle = QuantumCircuit(preparation.num_qubits)
@@ -144,70 +146,32 @@ def amplitude_estimation(values, phase_bits):
 
 
 # ---------------------------------------------------------------------------
-# The single-pair step, which outputs a step rather than covariance entries
-# ---------------------------------------------------------------------------
-
-# Pick one history pair uniformly, add its difference with a random sign, scaled by
-# sqrt(SCALE2 / 2), plus the +-1 lattice step. The differences are compiled in as constants.
-# Returns the circuit and its step registers.
-def single_pair_step(history, bits=BITS):
-    k, d = history.shape
-    pairs = list(itertools.combinations(range(k), 2))
-    deltas = np.rint(np.sqrt(SCALE2 / 2) * np.array([history[a] - history[b] for a, b in pairs])).astype(int)
-    if np.any(np.abs(deltas) + 1 >= 1 << (bits - 1)):
-        raise ValueError("the single-pair step could overflow its signed register")
-    index_bits = max(1, (len(pairs) - 1).bit_length())
-
-    # Registers
-    step = [QuantumRegister(bits, f"step_{p}") for p in range(d)]
-    index, sign = QuantumRegister(index_bits, "pair"), QuantumRegister(1, "sign")
-    iso_move, iso_sign = QuantumRegister(d, "iso_move"), QuantumRegister(d, "iso_sign")
-    qc = QuantumCircuit(*step, index, sign, iso_move, iso_sign)
-
-    # A uniformly chosen pair and a random sign
-    qc.append(StatePreparation(np.pad(np.full(len(pairs), 1 / np.sqrt(len(pairs))),
-                                      (0, (1 << index_bits) - len(pairs)))), index)
-    qc.h(sign)
-
-    # Add pair i's difference when the index register equals i
-    for i, delta in enumerate(deltas):
-        zeros = [qubit for bit, qubit in enumerate(index) if not (i >> bit) & 1]
-        qc.x(zeros)
-        for register, value in zip(step, delta):
-            if value:
-                add_signed(qc, register, int(value), sign[0], list(index))
-        qc.x(zeros)
-
-    # The extra +-1 step in each coordinate
-    for p in range(d):
-        lazy_coin(qc, ISO_VAR, iso_move[p], iso_sign[p])
-        add_signed(qc, step[p], 1, iso_sign[p], [iso_move[p]])
-
-    return qc, step
-
-
-# ---------------------------------------------------------------------------
 # The qubit-count table
 # ---------------------------------------------------------------------------
 
 def write_table():
     # Every circuit is built for the same history on the fixed local grid
-    spacing = .08 / 256
-    history = np.cumsum(np.ones((K, D)) @ np.rint(MODES / spacing), axis=0)
+    spacing = LOCAL_GRID[2]
+    history = np.cumsum(np.ones((N, D)) @ np.rint(MODES / spacing), axis=0)
     phase_bits = phase_states(SHOTS // SETTINGS["qae"]).bit_length() - 1
-    walk_qubits = make_walk(BITS, np.zeros(D, int), np.eye(D, dtype=int))[0].num_qubits
-    quantum_modes = quantum_amr_modes(MODES, np.full(D, spacing))[1]
-    quantum_amr_qubits = make_walk(BITS, np.zeros(D, int), quantum_modes)[0].num_qubits
+    # The two proposed steps' walks, on a fixed grid and with quantum AMR's counter
+    levels, quantum_modes = quantum_amr_modes(MODES, spacing)
+    walk_qubits = {}
+    for key, random_pairs in (("coin_sum", None), ("single_pair", SINGLE_RANDOM_PAIR)):
+        for amr, grid_modes, grid_levels in (("fixed", np.eye(D, dtype=int), np.zeros((1, D), int)),
+                                             ("quantum", quantum_modes, levels)):
+            step_modes = None if random_pairs is None else scaled_modes(MODES, spacing, grid_levels,
+                                                                         random_pairs[2])
+            qc = make_walk(BITS, np.zeros(D, int), grid_modes, random_pairs=random_pairs and random_pairs[:2],
+                           step_modes=step_modes)[0]
+            walk_qubits[key, amr] = qc.num_qubits
 
-    # The pairwise-moment circuits the readouts use to measure a variance or the trace
-    variance = pairwise_moment(pair_products(history, 0, 0))[0].num_qubits
-    trace = pairwise_moment(pair_products(history, 0, 0) + pair_products(history, 1, 1))[0].num_qubits
+    # The pair-product circuits the readouts use to measure a variance or the trace
+    variance = pair_product_circuit(pair_products(history, 0, 0))[0].num_qubits
+    trace = pair_product_circuit(pair_products(history, 0, 0) + pair_products(history, 1, 1))[0].num_qubits
 
     # A method's width is that of its widest circuit; its circuits run one after another
     qubits = {
-        "coin_sum_qamr": quantum_amr_qubits, "coin_sum_amr": walk_qubits, "coin_sum": walk_qubits,
-        "single_pair": single_pair_step(history)[0].num_qubits,
-        "pairwise": pairwise_moment(pair_products(history, 0, 1))[0].num_qubits,
         "swap": max(swap_test(history)[0].num_qubits, variance),
         "hadamard": max(hadamard_test(history)[0].num_qubits, variance),
         "qae": amplitude_estimation(pair_products(history, 0, 1), phase_bits)[0].num_qubits,
@@ -223,36 +187,20 @@ def write_table():
         r"\midrule",
     ]
 
-    # One row per method
-    for key in SHOWN:
-        label = METHODS[key][0]
-        if key in READOUTS:
-            settings, output = SETTINGS[key], r"Entries$^*$"
-        else:
-            settings, output = 1, "Step"
-        lines.append(f"{label} & {qubits[key]} & {settings} & {output} & -- " + r"\\")
+    # The two proposed steps on each kind of grid: quantum AMR (and hybrid AMR, shown with
+    # --classical-amr) adds the 2-qubit counter
+    fixed, refined = ((", fixed local grid or classical AMR", " + quantum or hybrid AMR") if style.CLASSICAL_AMR
+                      else (", fixed local grid", " + quantum AMR"))
+    for key in ("coin_sum", "single_pair"):
+        name = METHODS[key][0]
+        lines.append(f"{name}{fixed} & {walk_qubits[key, 'fixed']} & 1 & Step & -- " + r"\\")
+        lines.append(f"{name}{refined} & {walk_qubits[key, 'quantum']} & 1 & Step & -- " + r"\\")
 
-    # Footnote
-    qae_calls = SETTINGS["qae"] * (2 * ((1 << phase_bits) - 1) + 1)
-    lines += [
-        r"\bottomrule",
-        r"\end{tabular}",
-        r"\par\smallskip",
-        r"\footnotesize Counts use the same $d=2$, $K=3$ history and two 8-bit step coordinates. "
-        r"Coin-sum widths include the complete walk; single-pair width includes a compiled step with history supplied classically. "
-        r"Quantum AMR adds a 2-qubit counter of preparatory steps whose coins disagree, which sets each branch's grid inside the circuit. "
-        r"Readout widths count the covariance stage only, and are those of a method's widest circuit; its settings run one after another. "
-        r"$^*$These outputs require a Gaussian loader: at least 16 step-register qubits, plus implementation-dependent workspace. "
-        r"Readout-stage and step registers may be reused between circuits. "
-        r"Readouts measure every variance or trace they use: SWAP and Hadamard run a pairwise-moment circuit for each variance, "
-        r"and covariance preparation runs one for its trace. "
-        r"The covariance-preparation replica has one coordinate qubit and two history-index qubits; its settings read the diagonal, the off-diagonal and the trace. "
-        rf"Amplitude estimation uses {phase_bits} phase qubits and {qae_calls} total calls to $A$ or $A^{{-1}}$ "
-        rf"within the {SHOTS}-call budget. "
-        r"Classical loader construction, coherent data-access oracles, classical-AMR history measurements, and hardware execution times are not included in these stage widths. "
-        r"Dashes indicate that hardware step latency has not been measured.\par",
-    ]
+    # The readouts, whose widths do not depend on the grid
+    for key in [key for key in SHOWN if key in READOUTS]:
+        lines.append(f"{METHODS[key][0]} & {qubits[key]} & {SETTINGS[key]} & Entries & -- " + r"\\")
 
+    lines += [r"\bottomrule", r"\end{tabular}"]
     style.FIGURES.mkdir(exist_ok=True)
     (style.FIGURES / "method_costs.tex").write_text("\n".join(lines) + "\n")
 

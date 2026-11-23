@@ -1,8 +1,11 @@
-# When does the AMR grid improve the coin-sum step? Three experiments on seven geometries:
-#   1. Fixed grids versus AMR windows chosen from 8 to 1,000 pilot histories, and versus
-#      quantum AMR, which refines each branch's grid inside the circuit
-#   2. AMR window widths and axis choices, from the same 1,000-history samples
-#   3. Thresholds for rebuilding a window when the walk narrows or broadens
+# Which grid gives the most accurate coin-sum step? Three experiments on seven geometries:
+#   1. Fixed grids, classical AMR windows chosen from 8 to 1,000 pilot histories, quantum AMR
+#      (each branch refines the local grid inside the circuit, with no pilot), and hybrid AMR
+#      (each branch refines a classical AMR window)
+#   2. Classical AMR window widths and axis choices, from the same 1,000-history samples
+#   3. Thresholds for rebuilding a classical AMR window when the walk narrows or broadens
+# Every experiment is computed, but only the fixed grids and quantum AMR are drawn unless
+# --classical-amr is given (plot_style.CLASSICAL_AMR).
 #
 #   python3.12 amr.py              # recompute (about 15 s) and plot
 #   python3.12 amr.py --plot-only  # redraw from data/amr.npz
@@ -12,11 +15,12 @@ from pathlib import Path
 
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Ellipse, Rectangle
 
 import plot_style as style
-from walk import (BITS, D, ISO_VAR, K, MODES, SCALE2, X0, all_histories, amr_window, pilot_histories,
-                  quantum_amr_step_covariance)
+from walk import (BITS, D, GAMMA2, ISO_VAR, MODES, N, XI0, all_histories, amr_window, pilot_histories,
+                  quantum_amr_step_covariances)
 
 
 DATA = Path(__file__).parent / "data" / "amr.npz"
@@ -45,28 +49,36 @@ WIDTHS = [16, 24, 32]
 AXES_LABELS = ["Axis-aligned", "Rotated square", "Rotated rectangular"]
 THRESHOLDS = np.array([.10, .25, .50])
 
+# The heatmap's single-hue ramp: the amplitude-estimation olive of the method bar charts
+# (#6E7F2D), from a pale tint at 0% to a slightly deeper shade of it at 100%
+OLIVE = LinearSegmentedColormap.from_list("olive", ["#F4F6EC", "#5B6A22"])
+
 
 # ---------------------------------------------------------------------------
 # Exact step covariance on a grid. Every error here is exact rather than estimated from
 # samples; test_walk.py checks that sampled circuits agree with it.
 # ---------------------------------------------------------------------------
 
-# Covariance of one coin-sum step on a grid, averaged over all histories. A +-1 walk has
-# expected history covariance (K + 1) / 6 * modes^T modes; the grid rounds the modes first,
-# and its centre does not matter.
+# Covariance of one coin-sum step on a grid (centre, V, \bm\delta), averaged over all histories.
+# A +-1 walk has expected history covariance
+#   \mathbb E[\widehat\Sigma_N] = \frac{N+1}{6} \sum_{\ell=1}^{d} \mathbf v_\ell \mathbf v_\ell^\top,
+# so the step has covariance
+#   B (\gamma^2 \mathbb E[\widehat\Sigma_N] + \nu I_d) B^\top, \quad B = V \operatorname{diag}(\bm\delta),
+# where the grid rounds the modes \mathbf v_\ell first; its centre does not matter.
 def step_covariance(modes, grid):
     center, axes, spacing = grid
     grid_modes = np.rint(modes @ axes / spacing).astype(int)
     basis = axes @ np.diag(spacing)
 
-    lattice = SCALE2 * ((K + 1) / 6) * (grid_modes.T @ grid_modes)
+    lattice = GAMMA2 * ((N + 1) / 6) * (grid_modes.T @ grid_modes)
     lattice += ISO_VAR * np.eye(D)
     return basis @ lattice @ basis.T
 
 
-# Relative error against the same step without any grid rounding
+# Relative error against the same step without any grid rounding, \gamma^2 \mathbb E[\widehat\Sigma_N]
+# with the exact modes
 def covariance_error(modes, grid):
-    target = SCALE2 * ((K + 1) / 6) * (modes.T @ modes)
+    target = GAMMA2 * ((N + 1) / 6) * (modes.T @ modes)
     return np.linalg.norm(step_covariance(modes, grid) - target) / np.linalg.norm(target)
 
 
@@ -76,21 +88,24 @@ def fits(modes, grid, histories):
     center, axes, spacing = grid
     n = 1 << BITS
 
-    start = (X0 - center) @ axes / spacing + n / 2
+    start = (XI0 - center) @ axes / spacing + n / 2
     points = (histories - center) @ axes / spacing + n / 2
     grid_modes = np.rint(modes @ axes / spacing).astype(int)
 
     return bool(np.all((start >= 0) & (start < n)) and np.all((points >= 0) & (points < n))
-                and np.all(K * np.abs(grid_modes).sum(axis=0) < n / 2))
+                and np.all(N * np.abs(grid_modes).sum(axis=0) < n / 2))
 
 
-# Quantum AMR's error: each branch's step on its own refinement of the local grid, averaged over
-# the 64 equally likely branches, against the same target
-def quantum_amr_error(modes, spacing):
-    signs, _ = all_histories(modes)
-    covariance = np.mean([quantum_amr_step_covariance(s, modes, spacing) for s in signs], axis=0)
+# The error when each branch refines the base grid inside the circuit: quantum AMR from the local
+# grid, or hybrid AMR from a classical AMR window. The 64 branches are equally likely. NaN if the
+# walk does not fit the base grid even unrefined.
+def refined_error(modes, grid):
+    try:
+        covariance = quantum_amr_step_covariances(grid, modes).mean(axis=0)
+    except ValueError:
+        return np.nan
 
-    target = SCALE2 * ((K + 1) / 6) * (modes.T @ modes)
+    target = GAMMA2 * ((N + 1) / 6) * (modes.T @ modes)
     return np.linalg.norm(covariance - target) / np.linalg.norm(target)
 
 
@@ -105,10 +120,11 @@ def checked_error(modes, grid, histories):
 # The three experiments, for one geometry
 # ---------------------------------------------------------------------------
 
-# Experiments 1 and 2: AMR windows from growing numbers of pilot histories, and, for the
-# 1,000-history samples, three window widths and three axis choices
+# Experiments 1 and 2: classical and hybrid AMR windows from growing numbers of pilot histories,
+# and, for the 1,000-history samples, three classical window widths and three axis choices
 def pilot_sample_errors(modes, pool, histories, rng):
-    amr = np.full((len(PILOT_SAMPLES), REPS), np.nan)   # NaN: the window did not fit
+    classical = np.full((len(PILOT_SAMPLES), REPS), np.nan)   # NaN: the window did not fit
+    hybrid = np.full((len(PILOT_SAMPLES), REPS), np.nan)
     widths = np.empty((len(WIDTHS), REPS))
     axes_choices = np.empty((len(AXES_LABELS), REPS))
 
@@ -116,10 +132,11 @@ def pilot_sample_errors(modes, pool, histories, rng):
         for r in range(REPS):
             sample = pool[rng.choice(PILOT_POOL, samples, replace=False)]
 
-            # 1: the default AMR window
+            # 1: the default window, alone (classical AMR) and refined in the circuit (hybrid AMR)
             window = amr_window(sample)
             if fits(modes, window, histories):
-                amr[b, r] = covariance_error(modes, window)
+                classical[b, r] = covariance_error(modes, window)
+            hybrid[b, r] = refined_error(modes, window)
 
             if samples == 1000:
                 center, axes, spacing = window
@@ -136,21 +153,21 @@ def pilot_sample_errors(modes, pool, histories, rng):
                                           window]):
                     axes_choices[a, r] = checked_error(modes, grid, histories)
 
-    return amr, widths, axes_choices
+    return classical, hybrid, widths, axes_choices
 
 
-# Experiment 3: the walk narrows (scales[0]) or broadens (scales[1]). Rebuild the window only if
-# some width changes by more than the threshold, then widen it until the walk fits.
+# Experiment 3: the walk narrows (scales[0]) or broadens (scales[1]). Rebuild the classical AMR
+# window only if some width changes by more than the threshold, then widen it until the walk fits.
 def rebuild_errors(modes, pool, scales, rng):
     rebuilt = np.empty((2, len(THRESHOLDS), REPS))
 
     for s in range(2):
         for r, scale in enumerate(scales[s]):
-            # Histories before and after the change; scaling about X0 gives the measured law
+            # Histories before and after the change; scaling about XI0 gives the measured law
             # of the rescaled walk
             before = pool[rng.choice(PILOT_POOL, 1000, replace=False)]
             after = pool[rng.choice(PILOT_POOL, 1000, replace=False)]
-            after = X0 + scale * (after - X0)
+            after = XI0 + scale * (after - XI0)
             new_modes = scale * modes
             new_histories = all_histories(new_modes)[1]
 
@@ -176,7 +193,8 @@ def run():
 
     fixed = np.empty((len(CASES), 2))
     quantum = np.empty(len(CASES))
-    amr = np.empty((len(CASES), len(PILOT_SAMPLES), REPS))
+    classical = np.empty((len(CASES), len(PILOT_SAMPLES), REPS))
+    hybrid = np.empty((len(CASES), len(PILOT_SAMPLES), REPS))
     widths = np.empty((len(CASES), len(WIDTHS), REPS))
     axes_choices = np.empty((len(CASES), len(AXES_LABELS), REPS))
     rebuilt = np.empty((len(CASES), 2, len(THRESHOLDS), REPS))
@@ -187,16 +205,20 @@ def run():
         pool = pilot_histories(modes, width, PILOT_POOL, seed=300 + c)
         histories = all_histories(modes)[1]
 
-        local_grid = (X0, np.eye(D), np.full(D, width / (1 << BITS)))
+        local_grid = (XI0, np.eye(D), np.full(D, width / (1 << BITS)))
         fixed[c] = [covariance_error(modes, full_grid), covariance_error(modes, local_grid)]
-        quantum[c] = quantum_amr_error(modes, local_grid[2])
-        amr[c], widths[c], axes_choices[c] = pilot_sample_errors(modes, pool, histories, rng)
+        quantum[c] = refined_error(modes, local_grid)
+        classical[c], hybrid[c], widths[c], axes_choices[c] = pilot_sample_errors(modes, pool, histories, rng)
         rebuilt[c] = rebuild_errors(modes, pool, scales, rng_change)
-        print(f"{name}: AMR mean error {np.mean(amr[c, -1]):.3%}", flush=True)
+        if style.CLASSICAL_AMR:
+            print(f"{name}: classical AMR {np.mean(classical[c, -1]):.3%}, quantum AMR {quantum[c]:.3%}, "
+                  f"hybrid AMR {np.mean(hybrid[c, -1]):.3%}", flush=True)
+        else:
+            print(f"{name}: local grid {fixed[c, 1]:.3%}, quantum AMR {quantum[c]:.3%}", flush=True)
 
     DATA.parent.mkdir(exist_ok=True)
-    np.savez_compressed(DATA, fixed=fixed, quantum=quantum, amr=amr, widths=widths, axes_choices=axes_choices,
-                        rebuilt=rebuilt)
+    np.savez_compressed(DATA, fixed=fixed, classical=classical, quantum=quantum, hybrid=hybrid, widths=widths,
+                        axes_choices=axes_choices, rebuilt=rebuilt)
 
 
 # ---------------------------------------------------------------------------
@@ -206,66 +228,80 @@ def run():
 NAMES = [case[0] for case in CASES]
 
 
-# Experiment 1: fixed grids versus 1,000-history AMR windows and quantum AMR
-def plot_fixed_vs_amr(fixed, amr, quantum):
-    if np.isnan(amr[:, -1]).any():
-        raise ValueError("a 1,000-sample AMR window did not fit the walk")
+# Experiment 1: every grid setup of the coin sum. The classical and hybrid windows come from
+# 1,000 pilot histories; their bars are means and SDs over the 80 windows. Without
+# --classical-amr, only the fixed grids and quantum AMR, which are exact and have no error bars.
+def plot_grid_setups(fixed, classical, quantum, hybrid):
+    colors = style.COLORS
+    series = [("Full-range grid", fixed[:, 0], None, colors["SAGE"]),
+              ("Informed local grid", fixed[:, 1], None, colors["SALMON"]),
+              ("Quantum AMR", quantum, None, colors["INDIGO"])]
+    ylabel = r"Covariance error (\%)"
 
-    style.grouped_bars(NAMES, [
-        ("Full-range grid", fixed[:, 0], None, style.COLORS["BASELINE"]),
-        ("Informed local grid", fixed[:, 1], None, style.COLORS["COIN_SUM"]),
-        ("Classical AMR grid", amr[:, -1].mean(axis=1), amr[:, -1].std(axis=-1, ddof=1), style.COLORS["COIN_SUM_AMR"]),
-        ("Quantum AMR grids", quantum, None, style.COLORS["COIN_SUM_QAMR"])],
-        r"Covariance error (\%; mean $\pm$ 1 SD, $n=80$)", "coin_sum_amr_covariance_error.pdf",
-        height=4.8, log=True)
+    # Classical and hybrid AMR, in grid order
+    if style.CLASSICAL_AMR:
+        if np.isnan(classical[:, -1]).any() or np.isnan(hybrid[:, -1]).any():
+            raise ValueError("a 1,000-sample window did not fit the walk")
+        series.insert(2, ("Classical AMR", classical[:, -1].mean(axis=1), classical[:, -1].std(axis=-1, ddof=1),
+                          colors["BURGUNDY"]))
+        series.append(("Hybrid AMR", hybrid[:, -1].mean(axis=1), hybrid[:, -1].std(axis=-1, ddof=1),
+                       colors["GOLD"]))
+        ylabel = r"Covariance error (\%; mean $\pm$ 1 SD, $n=80$)"
+
+    style.grouped_bars(NAMES, series, ylabel, "coin_sum_amr_covariance_error.pdf", height=4.8, log=True)
 
 
-# Experiment 1: how often an AMR window beats the fixed local grid, by pilot sample count
-def plot_pilot_success(fixed, amr):
+# Relative luminance of an RGB(A) colour. Below 0.2, white text contrasts more than ink.
+def luminance(color):
+    return (np.array(color[:3]) ** 2.2) @ [.2126, .7152, .0722]
+
+
+# Experiment 1: how often a hybrid AMR window beats quantum AMR alone, by pilot sample count
+def plot_pilot_success(quantum, hybrid):
     style.apply()
-    win_rate = 100 * (amr < fixed[:, 1, None, None]).mean(axis=2)
+    win_rate = 100 * (hybrid < quantum[:, None, None]).mean(axis=2)
     fig, ax = plt.subplots(figsize=(5.8, 4.4))
     ax.spines[:].set_visible(True)
-    image = ax.imshow(win_rate, aspect="auto", origin="lower", cmap="Greens", vmin=0, vmax=100)
+    image = ax.imshow(win_rate, aspect="auto", origin="lower", cmap=OLIVE, vmin=0, vmax=100)
 
     # Print each cell's value, and outline each geometry's best sample count
     for row, values in enumerate(win_rate):
         for column, value in enumerate(values):
             ax.text(column, row, f"{value:.0f}", ha="center", va="center", fontsize=10,
-                    color="white" if value > 50 else style.INK)
+                    color="white" if luminance(OLIVE(value / 100)) < .2 else style.INK)
         if values.max() > 0:
             ax.add_patch(Rectangle((np.argmax(values) - .5, row - .5), 1, 1, fill=False,
-                                   edgecolor=style.COLORS["MEASURED"], linewidth=2.0))
+                                   edgecolor=style.COLORS["RUST"], linewidth=2.0))
 
     # Axes and colour bar
     ax.set_xticks(np.arange(len(PILOT_SAMPLES)), PILOT_SAMPLES, rotation=45, ha="right")
     ax.set_yticks(np.arange(len(NAMES)), NAMES)
     ax.set_xlabel("Initial circuit samples")
-    fig.colorbar(image, ax=ax, shrink=0.8, label=r"Windows improving on local grid (\%)")
+    fig.colorbar(image, ax=ax, shrink=0.8, label="Hybrid AMR windows improving\n" r"on quantum AMR (\%)")
 
     style.save(fig, "coin_sum_amr_pilot_success.pdf")
 
 
-# Experiment 2: window widths and axis choices
+# Experiment 2: classical AMR window widths and axis choices
 def plot_window_choices(widths, axes_choices):
     ylabel = r"Covariance error (\%; mean $\pm$ 1 SD)"
     colors = style.COLORS
 
-    width_colors = [colors["COIN_SUM_AMR"], colors["COIN_SUM"], colors["MEASURED"]]
+    width_colors = [colors["BURGUNDY"], colors["SALMON"], colors["RUST"]]
     style.grouped_bars(NAMES, [
-        (rf"Window width $= {w}\sigma_j$", widths[:, j].mean(axis=1), widths[:, j].std(axis=-1, ddof=1), color)
+        (rf"Window width $= {w}\sigma_k$", widths[:, j].mean(axis=1), widths[:, j].std(axis=-1, ddof=1), color)
         for j, (w, color) in enumerate(zip(WIDTHS, width_colors))], ylabel, "amr_zoom_limit.pdf")
 
-    axes_colors = [colors["COIN_SUM"], colors["MEASURED"], colors["COIN_SUM_AMR"]]
+    axes_colors = [colors["SALMON"], colors["RUST"], colors["BURGUNDY"]]
     style.grouped_bars(NAMES, [
         (label, axes_choices[:, j].mean(axis=1), axes_choices[:, j].std(axis=-1, ddof=1), color)
         for j, (label, color) in enumerate(zip(AXES_LABELS, axes_colors))], ylabel, "amr_methods.pdf")
 
 
-# Experiment 3: rebuild thresholds when the walk narrows and when it broadens
+# Experiment 3: classical AMR rebuild thresholds when the walk narrows and when it broadens
 def plot_rebuild_thresholds(rebuilt):
     ylabel = r"Covariance error (\%; mean $\pm$ 1 SD)"
-    colors = [style.COLORS["COIN_SUM_AMR"], style.COLORS["COIN_SUM"], style.COLORS["MEASURED"]]
+    colors = [style.COLORS["BURGUNDY"], style.COLORS["SALMON"], style.COLORS["RUST"]]
 
     for s, filename in enumerate(["amr_refinement_criterion.pdf", "amr_unrefinement_criterion.pdf"]):
         style.grouped_bars(NAMES, [
@@ -282,8 +318,8 @@ def plot_tilted_geometry():
     style.apply()
     fig, ax = plt.subplots(figsize=(4.4, 3.5))
     for covariance, color, label, line in (
-            (tilted, style.COLORS["COIN_SUM_AMR"], "Tilted modes", "-"),
-            (np.diag(np.linalg.eigvalsh(tilted)), style.COLORS["BASELINE"], "Axis-aligned modes", "--")):
+            (tilted, style.COLORS["BURGUNDY"], "Tilted modes", "-"),
+            (np.diag(np.linalg.eigvalsh(tilted)), style.COLORS["SAGE"], "Axis-aligned modes", "--")):
         values, vectors = np.linalg.eigh(covariance)
         angle = np.degrees(np.arctan2(vectors[1, 1], vectors[0, 1]))
 
@@ -300,14 +336,17 @@ def plot_tilted_geometry():
 
 def plot():
     with np.load(DATA) as saved:
-        fixed, quantum, amr, widths, axes_choices, rebuilt = (
-            100 * saved[key] for key in ("fixed", "quantum", "amr", "widths", "axes_choices", "rebuilt"))
+        fixed, classical, quantum, hybrid, widths, axes_choices, rebuilt = (100 * saved[key] for key in (
+            "fixed", "classical", "quantum", "hybrid", "widths", "axes_choices", "rebuilt"))
 
-    plot_fixed_vs_amr(fixed, amr, quantum)
-    plot_window_choices(widths, axes_choices)
-    plot_rebuild_thresholds(rebuilt)
-    plot_pilot_success(fixed, amr)
+    plot_grid_setups(fixed, classical, quantum, hybrid)
     plot_tilted_geometry()
+
+    # Classical AMR's own experiments, and how often a hybrid AMR window beats quantum AMR alone
+    if style.CLASSICAL_AMR:
+        plot_window_choices(widths, axes_choices)
+        plot_rebuild_thresholds(rebuilt)
+        plot_pilot_success(quantum, hybrid)
 
 
 if __name__ == "__main__":

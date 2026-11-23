@@ -2,7 +2,6 @@
 #
 #   python3.12 -m unittest
 
-import itertools
 import unittest
 from unittest.mock import patch
 
@@ -10,10 +9,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 from qiskit.quantum_info import Statevector, partial_trace
 
-from circuit_costs import (amplitude_estimation, covariance_preparation, hadamard_test, pairwise_moment,
-                           single_pair_step, swap_test)
+from circuit_costs import (amplitude_estimation, covariance_preparation, hadamard_test, pair_product_circuit,
+                           swap_test)
 from covariance_methods import READOUTS, amplitude_estimates, pair_products, phase_states, readout
-from walk import SCALE2
 import covariance_methods as methods
 
 
@@ -26,17 +24,16 @@ class CovarianceMethodTests(unittest.TestCase):
     def test_skewed_errors_still_use_mean_and_standard_deviation(self):
         # Percent errors [1, 1, 1, 9] have mean 3 and sample SD 4, but median 1.
         sample = np.array([.01, .01, .01, .09])
-        errors = {key: sample for key in methods.METHODS}
-        errors.update({key + "_amr": sample for key in methods.METHODS if key != "coin_sum_amr"})
+        errors = {key + suffix: sample for key in methods.METHODS for suffix in methods.GRIDS}
         budgets = np.broadcast_to(sample, (len(methods.READOUTS), len(methods.BUDGETS), 4))
-        for draw, arguments in ((methods.plot_methods_amr, (errors,)),
+        for draw, arguments in ((methods.plot_all_grids, (errors,)),
                                 (methods.plot_budgets, (errors, budgets))):
             with patch.object(methods.style, "save") as save:
                 draw(*arguments)
                 figure = save.call_args.args[0]
                 axes = figure.axes[0]
                 segments = axes.collections[0].get_segments()[0]
-                if draw is methods.plot_methods_amr:
+                if draw is methods.plot_all_grids:
                     self.assertAlmostEqual(axes.patches[0].get_width(), 3)
                     np.testing.assert_allclose(segments[:, 0], [-1, 7])
                 else:
@@ -50,25 +47,35 @@ class CovarianceMethodTests(unittest.TestCase):
             history = np.array([[2., -1.], [4., 2.], [7., 4.]]) * [1, sign]
             S = np.cov(history.T)
 
-            # Hadamard and SWAP tests, whose probabilities give the correlation and S_01 / tr S
+            # Hadamard and SWAP tests, whose probabilities give the correlation and Sigma_01 / tr Sigma_N
             for build in (hadamard_test, swap_test):
                 qc, probability = build(history)
                 self.assertAlmostEqual(ancilla_probability(qc, 0), probability, places=11)
             self.assertAlmostEqual(hadamard_test(history)[1], (1 + S[0, 1] / np.sqrt(S[0, 0] * S[1, 1])) / 2)
             self.assertAlmostEqual(swap_test(history)[1], 3 / 4 - S[0, 1] / (2 * np.trace(S)))
 
-            # Pairwise moments of each entry and of the trace, whose rescaled probability gives
+            # Pair-product circuits for each entry and for the trace, whose rescaled probability gives
             # back that entry or the trace
             tables = [(pair_products(history, p, q), S[p, q]) for p, q in [(0, 0), (0, 1), (1, 1)]]
             tables.append((pair_products(history, 0, 0) + pair_products(history, 1, 1), np.trace(S)))
             for values, expected in tables:
-                qc, probability = pairwise_moment(values)
+                qc, probability = pair_product_circuit(values)
                 self.assertAlmostEqual(ancilla_probability(qc, 1), probability, places=11)
 
                 estimate = 3 / 2 * (values.min() + (values.max() - values.min()) * probability)
                 self.assertAlmostEqual(estimate, expected, places=10)
 
-    # The prepared coordinate state is S / tr(S)
+    # Classical and hybrid AMR appear in the all-grids chart only with --classical-amr
+    def test_classical_amr_switch(self):
+        sample = np.array([.01, .02])
+        errors = {key + suffix: sample for key in methods.METHODS for suffix in methods.GRIDS}
+        for switch, grids in ((False, 2), (True, 4)):
+            with patch.object(methods.style, "CLASSICAL_AMR", switch), patch.object(methods.style, "save") as save:
+                methods.plot_all_grids(errors)
+                self.assertEqual(len(save.call_args.args[0].axes[0].patches), grids * len(methods.SHOWN))
+            plt.close("all")
+
+    # The prepared coordinate state is Sigma_N / tr(Sigma_N)
     def test_covariance_preparation_holds_the_scaled_covariance(self):
         rng = np.random.default_rng(4200)
         for shape in ((3, 2), (5, 3)):
@@ -90,7 +97,7 @@ class CovarianceMethodTests(unittest.TestCase):
         history = np.array([[0., 4.], [2., 1.], [5., -2.]])
         target = np.cov(history.T)
 
-        for kind in ("swap", "hadamard", "qpca", "pairwise"):
+        for kind in ("swap", "hadamard", "qpca"):
             estimates = readout(history, kind, 384, np.random.default_rng(83), 30_000)
             self.assertLess(np.linalg.norm(estimates.mean(axis=0) - target) / np.linalg.norm(target), .004, kind)
 
@@ -117,7 +124,7 @@ class CovarianceMethodTests(unittest.TestCase):
         for build in (swap_test, hadamard_test, covariance_preparation):
             qc, _ = build(history)
             self.assertTrue(np.isfinite(Statevector.from_instruction(qc).data).all())
-        qc, probability = pairwise_moment(pair_products(history, 0, 1))
+        qc, probability = pair_product_circuit(pair_products(history, 0, 1))
         self.assertEqual(probability, 0)
         self.assertAlmostEqual(ancilla_probability(qc, 1), 0)
 
@@ -129,10 +136,6 @@ class CovarianceMethodTests(unittest.TestCase):
         for build in (swap_test, hadamard_test):
             qc, probability = build(history)
             self.assertAlmostEqual(ancilla_probability(qc, 0), probability, places=11)
-
-    def test_single_pair_overflow_is_rejected(self):
-        with self.assertRaisesRegex(ValueError, "overflow"):
-            single_pair_step(np.array([[0, 0], [20, 0], [30, 0]]), bits=3)
 
     # The number of phase states is the largest power of two that fits the oracle-call budget
     def test_amplitude_estimation_budget(self):
@@ -152,24 +155,6 @@ class CovarianceMethodTests(unittest.TestCase):
 
         phase = Statevector.from_instruction(qc).probabilities([qc.num_qubits - 2, qc.num_qubits - 1])
         np.testing.assert_allclose(phase, [0, .5, 0, .5], atol=1e-10)
-
-    # The single-pair circuit's step has the covariance of its rounded pair differences
-    def test_single_pair_step_has_the_rounded_covariance(self):
-        history = np.array([[0, 0], [1, 0], [0, 1]])
-        qc, step = single_pair_step(history, bits=3)
-
-        # Exact distribution of the two signed 3-bit step registers
-        probabilities = Statevector.from_instruction(qc).probabilities(
-            [qc.find_bit(qubit).index for register in step for qubit in register])
-        coordinates = np.column_stack((np.arange(64) % 8, np.arange(64) // 8))
-        coordinates = np.where(coordinates < 4, coordinates, coordinates - 8)
-        mean = probabilities @ coordinates
-        covariance = (coordinates.T * probabilities) @ coordinates - np.outer(mean, mean)
-
-        # Expected: the average outer product of the scaled, rounded pair differences, plus the +-1 step
-        differences = np.rint(np.sqrt(SCALE2 / 2) * np.array(
-            [history[a] - history[b] for a, b in itertools.combinations(range(3), 2)]))
-        np.testing.assert_allclose(covariance, differences.T @ differences / 3 + .1 * np.eye(2), atol=1e-10)
 
 
 if __name__ == "__main__":
